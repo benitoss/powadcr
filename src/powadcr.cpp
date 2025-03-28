@@ -118,6 +118,7 @@ EasyNex myNex(SerialHW);
 #include "globales.h"
 
 #include "AudioTools/AudioLibs/AudioKit.h"
+#include "AudioTools/CoreAudio/AudioFilter/Equalizer.h"
 AudioKit ESP32kit;
 
 // const char* file_name = "/output.wav";
@@ -203,7 +204,7 @@ bool pageScreenIsShown = false;
 
 // WAV Recorder
 // -----------------------------------------------------------------------
-#include "AudioTools/AudioLibs/AudioSourceSDFAT.h"
+#include "AudioTools/Disk/AudioSourceSDFAT.h"
 #include "AudioTools/AudioCodecs/CodecWAV.h"
 #include "AudioTools/AudioCodecs/CodecMP3Helix.h"
 // #include <AudioTools/AudioCodecs/CodecADPCM.h>
@@ -1570,8 +1571,8 @@ void playMP3()
     AudioPlayer player(source,kit,metadatafilter);
 
     // Ecualizer
-    Equilizer3Bands eq(kit);
-    ConfigEquilizer3Bands cfg_eq;
+    Equalizer3Bands eq(kit);
+    ConfigEqualizer3Bands cfg_eq;
 
     // Configuracion del booster
     Boost boost(0.5);
