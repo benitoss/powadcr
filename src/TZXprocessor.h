@@ -683,12 +683,37 @@ class TZXprocessor
         ////SerialHW.println("");
 
         // Vamos a verificar el flagByte
-
         int flagByte = getBYTE(mFile,_myTZX.descriptor[currentBlock].offsetData);
-        int typeBlock = getBYTE(mFile,_myTZX.descriptor[currentBlock].offsetData+1);
-
-        if (flagByte < 128)
+        
+        // ******************************************************************************
+        // CORRECCIÓN SPEEDLOCK: Bloques cortos de protección
+        // ******************************************************************************
+        // Los bloques Speedlock y otras protecciones usan bloques ID 0x11 muy cortos
+        // (típicamente 1-3 bytes con solo unos pocos bits usados).
+        // 
+        // Si lengthOfData < 19 bytes, NO podemos asumir que es una cabecera estándar
+        // ZX Spectrum porque:
+        // 1. No hay suficientes bytes para formar una cabecera válida (19 bytes)
+        // 2. El segundo byte (typeBlock) podría estar fuera del bloque de datos
+        // 3. Leer 19 bytes corruniría datos de bloques siguientes
+        //
+        // En estos casos, tratamos el bloque como datos de protección (type=4)
+        // independientemente del valor del flagByte.
+        // ******************************************************************************
+        
+        if (_myTZX.descriptor[currentBlock].lengthOfData < 19)
         {
+            // Bloque corto - típico de protecciones como Speedlock
+            // No intentar interpretar como cabecera estándar
+            strncpy(_myTZX.descriptor[currentBlock].name,"              ",14);
+            _myTZX.descriptor[currentBlock].type = 4;  // Tratar como datos de protección
+            _myTZX.descriptor[currentBlock].header = false;
+        }
+        else if (flagByte < 128)
+        {
+            // Bloque largo con flagByte < 128: posible cabecera estándar
+            int typeBlock = getBYTE(mFile,_myTZX.descriptor[currentBlock].offsetData+1);
+            
             // Es una cabecera
             uint8_t* block = (uint8_t*)ps_calloc(19+1,sizeof(uint8_t));
             getBlock(mFile,block,_myTZX.descriptor[currentBlock].offsetData,19);
@@ -726,10 +751,15 @@ class TZXprocessor
                   _myTZX.descriptor[currentBlock].type = 1;                
               }
             }
+            else
+            {
+              // typeBlock no reconocido, tratar como datos
+              _myTZX.descriptor[currentBlock].type = 4;
+            }
         }
         else
         {
-            // Es un bloque BYTE
+            // flagByte >= 128: Es un bloque de datos
             strncpy(_myTZX.descriptor[currentBlock].name,"              ",14);
             _myTZX.descriptor[currentBlock].type = 4;
         }
@@ -3195,14 +3225,27 @@ class TZXprocessor
             }
             case 32:
             {
-              // ID 0x20 - Pause or STOP the TAP
-              // Hacemos un delay
+              // ******************************************************************************
+              // ID 0x20 - Pause (silence) or 'Stop the Tape' command
+              // ******************************************************************************
+              // Especificación TZX v1.20:
+              // - Si duración == 0: STOP TAPE (el emulador no debe continuar)
+              // - Si duración > 0: Generar silencio de la duración especificada
+              // 
+              // "A 'Pause' block consists of a 'low' pulse level of some duration."
+              // "At the end of a 'Pause' block the 'current pulse level' is low"
+              // ******************************************************************************
+              
               dly = _myTZX.descriptor[i].pauseAfterThisBlock;
 
-              // Vemos si es una PAUSA o una parada del TAPE
               if (dly == 0)
               {                       
-                  // Finalizamos el ultimo bit
+                  // STOP THE TAPE - Duración 0 significa parar
+                  // Según especificación: "the emulator or utility should (in effect) 
+                  // STOP THE TAPE, i.e. should not continue loading until the user 
+                  // or emulator requests it."
+                  
+                  // Finalizamos el ultimo bit con un silencio de seguridad
                   if(LAST_SILENCE_DURATION==0)
                   {
                     _zxp.silence(2000);
@@ -3214,10 +3257,9 @@ class TZXprocessor
                   AUTO_PAUSE = true;
                   _hmi.verifyCommand("PAUSE");
 
-                  // Dejamos preparado el sieguiente bloque
+                  // Dejamos preparado el siguiente bloque
                   CURRENT_BLOCK_IN_PROGRESS++;
                   BLOCK_SELECTED++;
-                  //WAITING_FOR_USER_ACTION = true;
 
                   if (BLOCK_SELECTED >= _myTZX.numBlocks)
                   {
@@ -3225,15 +3267,16 @@ class TZXprocessor
                       CURRENT_BLOCK_IN_PROGRESS = 1;
                       BLOCK_SELECTED = 1;
                   }
-
-                  // Enviamos info al HMI.
-                  // _hmi.setBasicFileInformation(_myTZX.descriptor[BLOCK_SELECTED].name,_myTZX.descriptor[BLOCK_SELECTED].typeName,_myTZX.descriptor[BLOCK_SELECTED].size,_myTZX.descriptor[BLOCK_SELECTED].playeable);                        
-                  //return newPosition;
               }
               else
               {
-                  // En otro caso. delay
-                  _zxp.silence(dly);                        
+                  // Pausa normal con duración > 0
+                  // silence() ya maneja el terminador de 1ms y fuerza nivel LOW
+                  _zxp.silence(dly);
+                  
+                  // Aseguramos que el nivel quede en LOW después de la pausa
+                  // (ya lo hace silence(), pero lo dejamos explícito por seguridad)
+                  EDGE_EAR_IS = down;
               }                    
               break;
             }
@@ -3347,7 +3390,12 @@ class TZXprocessor
 
                     // Ahora vamos lanzando bloques dependiendo de su tipo
                     // Reproducimos el fichero
-                    if (_myTZX.descriptor[i].type == 0 || _myTZX.descriptor[i].type == 1 || _myTZX.descriptor[i].type == 7) 
+                    // ******************************************************************************
+                    // CORRECCIÓN: Añadido type == 4 para bloques de datos con flagByte >= 128
+                    // Esto es crítico para Speedlock y otras protecciones que usan bloques
+                    // Turbo con datos que no siguen la estructura estándar de cabecera ZX Spectrum
+                    // ******************************************************************************
+                    if (_myTZX.descriptor[i].type == 0 || _myTZX.descriptor[i].type == 1 || _myTZX.descriptor[i].type == 7 || _myTZX.descriptor[i].type == 4) 
                     {
                         //
                         switch (_myTZX.descriptor[i].ID)
@@ -3972,6 +4020,7 @@ class TZXprocessor
                               PROGRESS_BAR_BLOCK_VALUE = 100;
 
                               // Pausa despues de bloque
+                              // truco para evitar problemas en GDB
                               _zxp.silence(_myTZX.descriptor[i].pauseAfterThisBlock);
                               break;
                             }
@@ -4099,6 +4148,13 @@ class TZXprocessor
               // la reproducción
               if (LOADING_STATE == 1) 
               {
+                  // ******************************************************************************
+                  // HACK TZX: Tail pulse para el último bloque de la cinta
+                  // "Sometimes a tape might have its last tail pulse missing.
+                  // In case it's the last block in the tape, it's best to flip the tape bit
+                  // a last time to ensure that the process is terminated properly."
+                  // ******************************************************************************
+                  _zxp.finalTailPulse();
 
                   if(LAST_SILENCE_DURATION==0)
                   {_zxp.silence(2000);}

@@ -121,7 +121,7 @@ int getWORD(File mFile, int offset)
         logln(" - PAUS duration: " + String(descriptor.pause_duration) + " TStates");
     }
 
-    void analyzePULS(File &mFile, tPZXBlockDescriptor &descriptor) {
+    void analyzePULS0(File &mFile, tPZXBlockDescriptor &descriptor) {
         strncpy(descriptor.typeName, "PZX Pulse Sequence", 35);
         descriptor.playeable = true;
         descriptor.initial_level = 0; // Por defecto es LOW
@@ -180,6 +180,119 @@ int getWORD(File mFile, int offset)
             descriptor.timming.pzx_pulse_data[i].repeat = count;
         }
     }
+
+void analyzePULS(File &mFile, tPZXBlockDescriptor &descriptor) {
+    strncpy(descriptor.typeName, "PZX Pulse Sequence", 35);
+    descriptor.playeable = true;
+    descriptor.initial_level = 0;
+
+    int block_start = descriptor.offset + 8;
+    int block_end = block_start + descriptor.size;
+
+    // =============================================
+    // PASO 1: Contar el número de entradas de pulso
+    // =============================================
+    int pulse_count = 0;
+    int pos = block_start;
+    
+    while (pos < block_end) {
+        uint16_t val = getNBYTE(mFile, pos, 2);
+        pos += 2;
+        
+        if (pos > block_end) break;
+        
+        if (val & 0x8000) {
+            // Bit 15 = 1: Este word es un REPEAT COUNT
+            // El siguiente word (o words) es la DURACIÓN
+            pulse_count++;
+            
+            if (pos >= block_end) break;
+            uint16_t duration_word = getNBYTE(mFile, pos, 2);
+            pos += 2;
+            
+            // Si la duración tiene bit 15 activo, es de 31 bits
+            if (duration_word & 0x8000) {
+                pos += 2; // Saltar los 16 bits adicionales
+            }
+        } else {
+            // Bit 15 = 0: Este word es una DURACIÓN directa (count = 1)
+            pulse_count++;
+            // No hay más datos para esta entrada
+        }
+    }
+    
+    if (pulse_count == 0) {
+        logln("PULS: No pulses found");
+        return;
+    }
+
+    logln("PULS: Found " + String(pulse_count) + " pulse entries");
+
+    // =============================================
+    // PASO 2: Reservar memoria
+    // =============================================
+    descriptor.timming.pzx_num_pulses = pulse_count;
+    descriptor.timming.pzx_pulse_data = (tRlePulse*)ps_calloc(pulse_count, sizeof(tRlePulse));
+    
+    if (!descriptor.timming.pzx_pulse_data) {
+        logln("ERROR: Failed to allocate PULS memory");
+        descriptor.timming.pzx_num_pulses = 0;
+        return;
+    }
+
+    // =============================================
+    // PASO 3: Llenar la estructura de pulsos
+    // =============================================
+    pos = block_start;
+    int idx = 0;
+    
+    while (pos < block_end && idx < pulse_count) {
+        uint16_t val = getNBYTE(mFile, pos, 2);
+        pos += 2;
+        
+        uint32_t duration = 0;
+        uint16_t repeat = 1;
+        
+        if (val & 0x8000) {
+            // Bit 15 = 1: REPEAT COUNT en bits 0-14
+            repeat = val & 0x7FFF;
+            
+            // Leer la duración
+            if (pos >= block_end) break;
+            uint16_t duration_word = getNBYTE(mFile, pos, 2);
+            pos += 2;
+            
+            if (duration_word & 0x8000) {
+                // Duración de 31 bits
+                duration = (uint32_t)(duration_word & 0x7FFF) << 16;
+                if (pos >= block_end) break;
+                duration |= getNBYTE(mFile, pos, 2);
+                pos += 2;
+            } else {
+                // Duración de 15 bits
+                duration = duration_word;
+            }
+        } else {
+            // Bit 15 = 0: DURACIÓN directa, count = 1
+            duration = val;
+            repeat = 1;
+        }
+        
+        descriptor.timming.pzx_pulse_data[idx].pulse_len = duration;
+        descriptor.timming.pzx_pulse_data[idx].repeat = repeat;
+        
+        // Debug: mostrar los primeros pulsos
+        if (idx < 15) {
+            logln("  PULS[" + String(idx) + "]: duration=" + String(duration) + " T-states, repeat=" + String(repeat));
+        }
+        
+        idx++;
+    }
+    
+    // Actualizar el conteo real por si hubo algún problema
+    descriptor.timming.pzx_num_pulses = idx;
+    logln("PULS: Successfully parsed " + String(idx) + " pulses");
+}
 
     uint8_t getByte(File &mFile, int offset) 
     {

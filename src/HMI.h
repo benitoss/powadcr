@@ -2897,7 +2897,9 @@ class HMI
           // Le cambiamos el signo para que cuando seleccionemos -1 sea bajar tono en vez de quitar una muestra que es todo lo contrario (aumentar frecuencia)
           // y lo mismo con el +1
           AZIMUT = valVol;
-          TONE_ADJUST = (-210)*(TONE_ADJUSTMENT_ZX_SPECTRUM + (valVol-TONE_ADJUSTMENT_ZX_SPECTRUM_LIMIT));         
+          //TONE_ADJUST = (-210)*(TONE_ADJUSTMENT_ZX_SPECTRUM + (valVol-TONE_ADJUSTMENT_ZX_SPECTRUM_LIMIT));         
+          TONE_ADJUST = 0;
+          SAMPLES_ADJUST = (TONE_ADJUSTMENT_ZX_SPECTRUM + (valVol-TONE_ADJUSTMENT_ZX_SPECTRUM_LIMIT));
           logln("TONE: " + String(TONE_ADJUST) + " Hz"); 
           //saveHMIcfg("EQLopt");
         }    
@@ -2986,7 +2988,7 @@ class HMI
 
           // #ifdef DEBUGMODE
             //logln("");
-            //logln("Terminadores =" + String(APPLY_END));
+            logln("Terminadores ENABLE =" + String(APPLY_END));
           // #endif
         }
         // Polarización de la señal

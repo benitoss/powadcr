@@ -83,7 +83,7 @@ class ZXProcessor
     // Este es un factor de división para la amplitud del flanco terminador
     const double amplitudeFactor = 1.0;
     // T-states del ancho del terminador
-    const int maxTerminatorWidth = 3500; //Minimo debe ser 1ms (3500 TStates)
+    const int maxTerminatorWidth = 7000; //Minimo debe ser 1ms (3500 TStates)
     // otros parámetros
     const double freqCPU = DfreqCPU;
     const double tState = (1.0 / freqCPU); //0.00000028571 --> segundos Z80 
@@ -188,11 +188,6 @@ class ZXProcessor
             }
         }
 
-        // void outToWav(size_t buffersize)
-        // {
-        //     copierOutToWav.copyBytes(buffersize);
-        // }
-
         void insertSamplesError(int samples, bool changeNextEARedge)
         {
             // Este procedimiento permite insertar en la señal
@@ -206,6 +201,7 @@ class ZXProcessor
             size_t result = 0;
             uint16_t sample_R = 0;
             uint16_t sample_L = 0;
+            size_t bytes_written = 0;
 
             if (SWAP_MIC_CHANNEL)
             {
@@ -256,10 +252,6 @@ class ZXProcessor
                 {                
                     encoderOutWAV.write(buffer, result);
                 }
-                //
-                #ifdef BT_STACK
-                    write_audio_to_bluetooth(buffer, result);                
-                #endif
             }
 
             // Reiniciamos
@@ -395,6 +387,7 @@ class ZXProcessor
             uint8_t buffer[bytes+4]; 
             int16_t *ptr = (int16_t*)buffer;
             int chn = channels;        
+            size_t bytes_written = 0;
 
             for (int j=0;j<width;j++)
             {
@@ -426,10 +419,6 @@ class ZXProcessor
             {                
                 encoderOutWAV.write(buffer, result);
             }
-
-            #ifdef BT_STACK
-                write_audio_to_bluetooth(buffer, result);
-            #endif
         }
 
         void sampleDR(int samples, int amp)
@@ -568,8 +557,9 @@ class ZXProcessor
 
                 }
 
-                // Acumulamos el error producido
-                ACU_ERROR = (samples - (minFrame*framesCounter));
+                // Acumulamos el error del residuo del frame splitting
+                double residual_error = (double)samples - (double)(minFrame * framesCounter);
+                ACU_ERROR += residual_error;
                 
                 #ifdef DEBUGMODE
                     //log("ACU_ERROR: "+ String(ACU_ERROR));
@@ -602,19 +592,18 @@ class ZXProcessor
             double dwidth = width;
             double rsamples = ((dwidth / freqCPU) * SAMPLING_RATE) + calibrationValue;
             
-            
             // ********************************************************************************************
-            //
-            // PENDIENTE VALIDAR: Hay que hacer +1 a rsamples para conseguir un redondeo mayor (06/05/2024)
-            //
-            // int samples = rsamples + 1;
-            //
+            // CORRECCIÓN TZX v1.20: Acumulación de error de redondeo
+            // El error de redondeo se acumula para compensar en el siguiente pulso.
+            // Esto es crítico para loaders turbo donde el timing debe ser preciso.
             // ********************************************************************************************
             
-            // Ajustamos
-            int samples = round(rsamples);
-
-            ACU_ERROR = 0;
+            // Añadimos el error acumulado al cálculo
+            double samples_with_error = rsamples + ACU_ERROR;
+            int samples = (int)round(samples_with_error) + SAMPLES_ADJUST;
+            
+            // Calculamos el nuevo error acumulado (diferencia entre lo ideal y lo real)
+            ACU_ERROR = samples_with_error - (samples - SAMPLES_ADJUST);
 
             //
             // Generamos el semi-pulso
@@ -691,8 +680,12 @@ class ZXProcessor
 
                 }
 
-                // Acumulamos el error producido
-                ACU_ERROR = (samples - (minFrame*framesCounter));
+                // ********************************************************************************************
+                // CORRECCIÓN TZX v1.20: El error acumulado ya fue calculado al inicio de semiPulse().
+                // Aquí solo añadimos el error del residuo del frame splitting al ACU_ERROR existente.
+                // ********************************************************************************************
+                double residual_error = (double)samples - (double)(minFrame * framesCounter);
+                ACU_ERROR += residual_error;
                 
                 #ifdef DEBUGMODE
                     //log("ACU_ERROR: "+ String(ACU_ERROR));
@@ -950,36 +943,22 @@ class ZXProcessor
                     }
                 }
 
-                // Esto lo hacemos para acabar bien un ultimo flanco en down.
-                // Hay que tener en cuenta que el terminador se quita del tiempo de PAUSA
-                // la pausa puede ir desde 0 ms a 0x9999 ms
-                // 1ms = 3500 T-States
-                //
-                // Según la especificación al menos 1ms debe estar en un flanco contrario al ultimo flanco para reconocer este ultimo, y después aplicar
-                // el resto, como pausa.
-                //
+                // ******************************************************************************
+                // CORRECCIÓN TZX v1.20: Manejo correcto de pausas para Direct Recording
+                // ******************************************************************************
 
                 if (APPLY_END)
                 {
-                    if (EDGE_EAR_IS==down)
-                    {
-                        // El primer milisegundo es el contrario al ultimo flanco
-                        // el terminador se genera en base al ultimo flanco que indique
-                        // EDGE_EAR_IS
-                        #ifdef DEBUGMODE
-                            log("Añado TERMINATOR +1ms");
-                        #endif
+                    // Generamos el terminador de 1ms
+                    #ifdef DEBUGMODE
+                        log("Añado TERMINATOR +1ms - DR");
+                    #endif
 
-                        terminator_samples = terminator(maxTerminatorWidth);
-                        
-                        // El terminador ocupa 1ms
-                        if (duration > 1)
-                        {
-                            // Si es mayor de 1ms, entonces se lo restamos.
-                            samples -= terminator_samples;
-                            // Inicializamos la polarización de la señal
-                            //EDGE_EAR_IS = down;   
-                        }
+                    terminator_samples = terminator(maxTerminatorWidth);
+                    
+                    if (duration > 1)
+                    {
+                        samples -= terminator_samples;
                     }
                 }
 
@@ -987,16 +966,12 @@ class ZXProcessor
                     log("Samples: " + String(samples));
                 #endif
 
-
-                // Aplicamos ahora el silencio
-                // double dsapling = SAMPLING_RATE;
-                // double width = ((samples / dsapling) * freqCPU) + calibrationValue;
-                
-                //logln("Muestras: " + String(round(samples)) + " vs " + String(samples));
-
                 // Generador de pulsos exclusivo para silencios
                 int swidth = round(samples);
-                pulseSilence(swidth, true); 
+                if (swidth > 0)
+                {
+                    pulseSilence(swidth, true);
+                } 
                 
                 
                 #ifdef DEBUGMODE
@@ -1047,36 +1022,31 @@ class ZXProcessor
                     }
                 }
 
-                // Esto lo hacemos para acabar bien un ultimo flanco en down.
-                // Hay que tener en cuenta que el terminador se quita del tiempo de PAUSA
-                // la pausa puede ir desde 0 ms a 0x9999 ms
-                // 1ms = 3500 T-States
-                //
-                // Según la especificación al menos 1ms debe estar en un flanco contrario al ultimo flanco para reconocer este ultimo, y después aplicar
-                // el resto, como pausa.
-                //
+                // ******************************************************************************
+                // CORRECCIÓN TZX v1.20: Manejo correcto de pausas según especificación
+                // ******************************************************************************
+                // "To ensure that the last edge produced is properly finished there should 
+                // be at least 1 ms pause of the OPPOSITE level and only after that the 
+                // pulse should go to 'low'."
+                // 
+                // El terminador genera 1ms del nivel OPUESTO para que el Spectrum 
+                // reconozca el último flanco de datos.
+                // ******************************************************************************
 
                 if (APPLY_END)
                 {
-                    if (EDGE_EAR_IS==down)
-                    {
-                        // El primer milisegundo es el contrario al ultimo flanco
-                        // el terminador se genera en base al ultimo flanco que indique
-                        // EDGE_EAR_IS
-                        #ifdef DEBUGMODE
-                            log("Añado TERMINATOR +1ms");
-                        #endif
+                    // Generamos el terminador de 1ms - esto cambia al nivel opuesto
+                    // La función terminator() ya hace semiPulse con changeEdge=true
+                    #ifdef DEBUGMODE
+                        log("Añado TERMINATOR +1ms");
+                    #endif
 
-                        terminator_samples = terminator(maxTerminatorWidth);
-                        
-                        // El terminador ocupa 1ms
-                        if (duration > 1)
-                        {
-                            // Si es mayor de 1ms, entonces se lo restamos.
-                            samples -= terminator_samples;
-                            // Inicializamos la polarización de la señal
-                            //EDGE_EAR_IS = down;   
-                        }
+                    terminator_samples = terminator(maxTerminatorWidth);
+                    
+                    // El terminador ocupa 1ms, lo restamos del tiempo de pausa
+                    if (duration > 1)
+                    {
+                        samples -= terminator_samples;
                     }
                 }
 
@@ -1084,16 +1054,12 @@ class ZXProcessor
                     log("Samples: " + String(samples));
                 #endif
 
-
-                // Aplicamos ahora el silencio
-                // double dsapling = SAMPLING_RATE;
-                // double width = ((samples / dsapling) * freqCPU) + calibrationValue;
-                
-                //logln("Muestras: " + String(round(samples)) + " vs " + String(samples));
-
                 // Generador de pulsos exclusivo para silencios
-                int swidth = round(samples);
-                pulseSilence(swidth, true); 
+                int swidth = round(samples) + SAMPLES_ADJUST;
+                if (swidth > 0)
+                {
+                    pulseSilence(swidth, true);
+                } 
                 
                 
                 #ifdef DEBUGMODE
@@ -1101,9 +1067,47 @@ class ZXProcessor
                 #endif
 
                 //insertamos el error de silencio calculado 
-                insertSamplesError(ACU_ERROR,true);   
+                insertSamplesError(ACU_ERROR,true);
+                
+                // ******************************************************************************
+                // CORRECCIÓN: Después de pausas largas, asegurar estado correcto
+                // ******************************************************************************
+                // Pausas >= 1000ms son puntos de sincronización natural. El Spectrum espera
+                // que la señal esté en el nivel inicial correcto según la polarización.
+                // Añadimos un pequeño delay extra para dar tiempo al 128K (ULA estricta)
+                // a estabilizarse después de secuencias complejas como Speedlock.
+                // ******************************************************************************
+                if (duration >= 1000.0)
+                {
+                    #ifdef DEBUGMODE
+                        log("Reset state after long pause (" + String(duration) + "ms) + extra settling time");
+                    #endif
+                    ACU_ERROR = 0;
+                    // Forzar nivel inicial según polarización configurada
+                    EDGE_EAR_IS = POLARIZATION;
+                    // Delay adicional de 200ms para dar tiempo de estabilización
+                    // Esto simula el delay que ocurre cuando el usuario para y reinicia
+                    delay(200);
+                }
 
             }       
+        }
+
+        // ******************************************************************************
+        // HACK TZX: A veces falta el último pulso de cola ("tail pulse")
+        // "Sometimes a tape might have its last tail pulse missing.
+        // In case it's the last block in the tape, it's best to flip the tape bit
+        // a last time to ensure that the process is terminated properly."
+        // 
+        // Esta función debe llamarse SOLO después del último bloque de la cinta.
+        // ******************************************************************************
+        void finalTailPulse()
+        {
+            #ifdef DEBUGMODE
+                log("HACK: Generando tail pulse final para el último bloque");
+            #endif
+            // Pulso de ~1ms para completar el último flanco
+            semiPulse(maxTerminatorWidth, true);
         }
 
         void pulse(int width, bool changeNextEARedge = true, long calibrationValue = 0)
@@ -1366,10 +1370,18 @@ class ZXProcessor
                 return;
             }
 
-            // Ahora enviamos el silencio, si aplica.
-            if (silent!=0)
+            // ******************************************************************************
+            // CORRECCIÓN TZX v1.20: Manejo correcto de pausas para Pure Data (ID 0x14)
+            // ******************************************************************************
+            // Según la especificación, si hay pausa > 0:
+            // 1. Generar 1ms del nivel OPUESTO al último para completar el último flanco
+            // 2. Luego el resto de la pausa en nivel LOW
+            // Si pausa == 0, NO cambiar el nivel actual
+            // ******************************************************************************
+            
+            if (silent > 0)
             {
-                // Silent tone
+                // Silent tone (silence() ya maneja el terminador y nivel LOW)
                 silence(silent);
 
                 if (LOADING_STATE == 2)

@@ -120,10 +120,6 @@ File audioFile;
   EncodedAudioStream encoderOutWAV(&wavfile, &wavEncoder);
 #endif
 
-#ifdef BT_STACK
-  #include "BluetoothAudioEmitter.h"
-#endif
-
 #include "ZXProcessor.h"
 
 // ZX Spectrum. Procesador de audio output
@@ -3864,7 +3860,7 @@ void playingFile()
 {
   rotate_enable = true;
   kitStream.setVolume(MAIN_VOL/100.0);
-  kitStream.setPAPower(ACTIVE_AMP && EN_SPEAKER);
+  kitStream.setPAPower(ACTIVE_AMP);
   
   auto new_sr = kitStream.defaultConfig();
   new_sr.channels = 2;
@@ -4246,7 +4242,8 @@ void verifyConfigFileForSelection()
         {
           // Cogemos el azimut
           AZIMUT = getValueOfParam(fileCfg[i].cfgLine, "azimut").toInt();
-          TONE_ADJUST = (-210)*(TONE_ADJUSTMENT_ZX_SPECTRUM + (AZIMUT-TONE_ADJUSTMENT_ZX_SPECTRUM_LIMIT));
+          //TONE_ADJUST = (-210)*(TONE_ADJUSTMENT_ZX_SPECTRUM + (AZIMUT-TONE_ADJUSTMENT_ZX_SPECTRUM_LIMIT));
+          SAMPLES_ADJUST = (TONE_ADJUSTMENT_ZX_SPECTRUM + (AZIMUT-TONE_ADJUSTMENT_ZX_SPECTRUM_LIMIT));
           // Movemos el slide
           myNex.writeNum("menuAudio2.tone.val",AZIMUT);
           myNex.writeNum("menuAudio2.toneL.val",AZIMUT-5);
@@ -7948,25 +7945,6 @@ void Task0code(void *pvParameters)
 
     hmi.readUART();
 
-    #ifdef BT_STACK
-        if (bt_connection_changed) 
-        {
-          bt_connection_changed = false; // Resetear la bandera
-          connection_state = new_connection_state; // Actualizar el estado global
-
-          if (connection_state == ESP_A2D_CONNECTION_STATE_CONNECTED) {
-              logln("A2DP Speaker Connected");
-              LAST_MESSAGE = "BT Speaker Connected";
-              esp_a2d_media_ctrl(ESP_A2D_MEDIA_CTRL_START);
-          } else if (connection_state == ESP_A2D_CONNECTION_STATE_DISCONNECTED) {
-              logln("A2DP Speaker Disconnected");
-              LAST_MESSAGE = "BT Speaker Disconnected";
-              // Volver a modo visible para poder reconectar
-              esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
-          }
-        }
-    #endif
-
     // Control del FTP
     #ifdef FTP_SERVER_ENABLE
       if (!IRADIO_EN && WIFI_ENABLE && WIFI_CONNECTED)
@@ -8634,10 +8612,6 @@ void setup()
     delay(1250);
   #endif
 
-  #ifdef BT_STACK
-    startBluetoothAudio();
-  #endif
-  
   LAST_MESSAGE = "BT Audio Enabled";  
   delay(1500);
 
