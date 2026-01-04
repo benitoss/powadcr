@@ -3858,7 +3858,7 @@ class TZXprocessor
                               {
                                 // Cojo el ID del simbolo que necesito
                                 symbolID = _myTZX.descriptor[i].symbol.pilotStream[j1].symbol;
-                                // y las veces que se repite
+                                // y las veces que se repite el SIMBOLO COMPLETO
                                 repeat = _myTZX.descriptor[i].symbol.pilotStream[j1].repeat;
 
                                   if (STOP || PAUSE) break; // Comprobar parada/pausa antes de cada byte                          
@@ -3874,63 +3874,72 @@ class TZXprocessor
                                   #ifdef DEBUGMODE
                                     logln("[" + String(j1) + "] Symbol ID: " + String(symbolID) + " - Repeat: " + String(repeat) + " - Polarity: " + String(polarity));
                                   #endif
-                                  // Cada definición puede tener varios semi-pulsos
-                                  // Leemos cada semi-pulso del simbolo
-                                  for (int r=0;r<NPP;r++)
+                                  
+                                  // ******************************************************************************
+                                  // CORRECCIÓN GDB: El símbolo COMPLETO se repite 'repeat' veces
+                                  // No cada pulso individual
+                                  // ******************************************************************************
+                                  for (int rep = 0; rep < repeat; rep++)
                                   {
-                                    // Cogemos la definición del ancho del pulso identificado en el array
-                                    pulseLength = _myTZX.descriptor[i].symbol.symDefPilot[symbolID].pulse_array[r];
-                                    #ifdef DEBUGMODE
-                                      logln("Pulse Length: " + String(pulseLength));
-                                    #endif
-
-                                    // Según la polaridad, actuamos de una forma u otra
-                                    // Reproducimos el simbolo
-                                    switch (polarity)
+                                    // Cada definición puede tener varios semi-pulsos
+                                    // Leemos cada semi-pulso del simbolo
+                                    for (int r=0;r<NPP;r++)
                                     {
-                                      case 0:
-                                      {
-                                        // Change edge
-                                        _zxp.forzeHighLevel = false;
-                                        _zxp.forzeLowLevel = false;
-                                        _zxp.playCustomSymbol(pulseLength,repeat,true);
-                                      } 
-                                      break;
-                                    
-                                      case 1:
-                                      {
-                                        // No change edge. Keep the same
-                                        _zxp.forzeHighLevel = false;
-                                        _zxp.forzeLowLevel = false;
-                                        _zxp.playCustomSymbol(pulseLength,repeat,false);
-                                      }
-                                      break;
+                                      // Cogemos la definición del ancho del pulso identificado en el array
+                                      pulseLength = _myTZX.descriptor[i].symbol.symDefPilot[symbolID].pulse_array[r];
+                                      
+                                      // Si el pulso es 0, indica fin del símbolo (spec TZX)
+                                      if (pulseLength == 0) break;
+                                      
+                                      #ifdef DEBUGMODE
+                                        logln("Pulse Length: " + String(pulseLength));
+                                      #endif
 
-                                      case 2:
+                                      // Según la polaridad, actuamos de una forma u otra
+                                      // Reproducimos el pulso (1 vez por iteración del símbolo)
+                                      switch (polarity)
                                       {
-                                        // Forze low level
-                                        _zxp.forzeHighLevel = false;
-                                        _zxp.forzeLowLevel = true;
-                                        _zxp.playCustomSymbol(pulseLength,repeat,false);
-                                      }
-                                      break;
+                                        case 0:
+                                        {
+                                          // Change edge
+                                          _zxp.forzeHighLevel = false;
+                                          _zxp.forzeLowLevel = false;
+                                          _zxp.playCustomSymbol(pulseLength, 1, true);
+                                        } 
+                                        break;
+                                      
+                                        case 1:
+                                        {
+                                          // No change edge. Keep the same
+                                          _zxp.forzeHighLevel = false;
+                                          _zxp.forzeLowLevel = false;
+                                          _zxp.playCustomSymbol(pulseLength, 1, false);
+                                        }
+                                        break;
 
-                                      case 3:
-                                      {
-                                        // Forze high level
-                                        _zxp.forzeHighLevel = true;
-                                        _zxp.forzeLowLevel = false;
-                                        _zxp.playCustomSymbol(pulseLength,repeat,false);
+                                        case 2:
+                                        {
+                                          // Forze low level
+                                          _zxp.forzeHighLevel = false;
+                                          _zxp.forzeLowLevel = true;
+                                          _zxp.playCustomSymbol(pulseLength, 1, false);
+                                        }
+                                        break;
+
+                                        case 3:
+                                        {
+                                          // Forze high level
+                                          _zxp.forzeHighLevel = true;
+                                          _zxp.forzeLowLevel = false;
+                                          _zxp.playCustomSymbol(pulseLength, 1, false);
+                                        }
+                                        break;
+                                      
                                       }
-                                      break;
-                                    
                                     }
-
                                   }
                                 }
-
-                              }                              
-                
+                              }
 
                               // ------------------------------------------------------------------
                               // DATA STREAM
@@ -3978,6 +3987,9 @@ class TZXprocessor
 
                                               // Cogemos la longitud del pulso
                                               pulseLength = (_myTZX.descriptor[i].symbol.symDefData[symbolID].pulse_array[r1]);
+                                              
+                                              // Si el pulso es 0, indica fin del símbolo (spec TZX)
+                                              if (pulseLength == 0) break;
                                               
                                               #ifdef DEBUGMODE
                                                 log(" -> PulseLen: " + String(pulseLength));
