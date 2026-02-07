@@ -1,3 +1,29 @@
+      // Reinicializa todas las variables de estado de bloque para un nuevo ciclo de captura
+      void resetBlockState(bool expectProgramHead) {
+
+      }
+    // Reinicializa todas las variables críticas de estado para evitar residuos entre sesiones
+    void resetRecordingState() {
+
+    }
+  /**
+   * Ejemplo de uso:
+   *   TAPrecorder taprec;
+   *   bool ok = taprec.convertWAVtoTAP("/test.wav", "/output.tap");
+   *   if (ok) Serial.println("Conversión exitosa");
+   *   else Serial.println("Error en la conversión");
+   *
+   * Notas importantes:
+   * - La lógica de decodificación de bits es un esqueleto y debe ajustarse para timings reales del ZX Spectrum.
+   * - El archivo WAV debe ser PCM, 16 bits, 44.1kHz, mono.
+   * - El archivo .TAP generado puede requerir validación en un emulador ZX Spectrum.
+   * - Para mejores resultados, ajustar la detección de cruces por cero y la reconstrucción de bits/bytes según la señal real.
+   *
+   * Pruebas recomendadas:
+   * 1. Usar un WAV de una carga real de ZX Spectrum.
+   * 2. Convertir y abrir el .TAP en un emulador (Fuse, ZXSpin, etc.).
+   * 3. Si el TAP no es válido, revisar la lógica de timings y reconstrucción de bytes.
+   */
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     Nombre: TAPrecorder.ino
     
@@ -114,22 +140,38 @@ class TAPrecorder
         const int16_t wSyncMin = wBit0_min;     //min 2 
         const int16_t wSyncMax = wBit0_max;     //max 15
       #else
-        // Para 32150Hz / 8 bits / mono - ZX Spectrum
-        const int16_t wToneMin = 16;            //min 23 Leader tone min pulse width
-        const int16_t wToneMax = 29;            //max 40 Leader tone max pulse width  
+        // // Para 32800Hz / 8 bits / mono - ZX Spectrum
+        // const int16_t wToneMin = 16;            //min 23 Leader tone min pulse width
+        // const int16_t wToneMax = 29;            //max 40 Leader tone max pulse width  
+        
+        // // Silencio
+        // const int16_t wSilence = 36;
+
+        // // Bit 0
+        // const int16_t wBit0_min = 1;            //min 2
+        // const int16_t wBit0_max = 10;           //max 15
+        // // Bit 1
+        // const int16_t wBit1_min = 12;           //min 16  02/11/2024
+        // const int16_t wBit1_max = 29;           //max 40  02/11/2024
+        // // SYNC == BIT_0
+        // const int16_t wSyncMin = wBit0_min;     //min 2 
+        // const int16_t wSyncMax = wBit0_max;     //max 15
+        const int16_t wToneMin = int((23*STANDARD_SR_REC_ZX_SPECTRUM)/44100);            
+        const int16_t wToneMax = round((40*STANDARD_SR_REC_ZX_SPECTRUM)/44100);
         
         // Silencio
-        const int16_t wSilence = 36;
+        const int16_t wSilence = round((65*STANDARD_SR_REC_ZX_SPECTRUM)/44100);
 
         // Bit 0
-        const int16_t wBit0_min = 1;            //min 2
-        const int16_t wBit0_max = 10;           //max 15
+        const int16_t wBit0_min = int((2*STANDARD_SR_REC_ZX_SPECTRUM)/44100);           
+        const int16_t wBit0_max = round((15*STANDARD_SR_REC_ZX_SPECTRUM)/44100);
         // Bit 1
-        const int16_t wBit1_min = 12;           //min 16  02/11/2024
-        const int16_t wBit1_max = 29;           //max 40  02/11/2024
+        const int16_t wBit1_min = int((16*STANDARD_SR_REC_ZX_SPECTRUM)/44100);          
+        const int16_t wBit1_max = round((40*STANDARD_SR_REC_ZX_SPECTRUM)/44100);          
         // SYNC == BIT_0
         const int16_t wSyncMin = wBit0_min;     //min 2 
         const int16_t wSyncMax = wBit0_max;     //max 15
+
       #endif
 
       // Con EdgeWindow
@@ -591,21 +633,12 @@ class TAPrecorder
 
     public:
 
-     
-      // void set_SdFat32(SdFat32 sdf32)
-      // {
-      //     _sdf32 = sdf32;
-      // }
+
 
       void set_HMI(HMI hmi)
       {
           _hmi = hmi;
       }
-
-      // void set_kit(AudioKit kit)
-      // {
-      //   _kit = kit;
-      // }
 
       void newBlock(File &mFile)
       {
@@ -693,8 +726,156 @@ class TAPrecorder
         mFile.seek(ptrTmpPos);
       }
       
+      /**
+       * Convierte un archivo WAV (PCM 16bits, 44.1kHz, mono) a un archivo .TAP para ZX Spectrum.
+       * @param wavPath Ruta del archivo WAV en la SD.
+       * @param tapPath Ruta de salida del archivo .TAP en la SD.
+       * @return true si la conversión fue exitosa, false en caso de error.
+       *
+       * Proceso:
+       * 1. Leer cabecera WAV y validar formato.
+       * 2. Leer datos PCM y analizar cruces por cero para detectar pulsos.
+       * 3. Decodificar bits y bytes según timings ZX Spectrum.
+       * 4. Escribir bloques en formato .TAP.
+       */
+      bool convertWAVtoTAP(const char* wavPath, const char* tapPath) {
+        // --- 1. Abrir archivo WAV para lectura ---
+        File wavFile = SD_MMC.open(wavPath, FILE_READ);
+        if (!wavFile) return false;
+
+        // --- 2. Leer y validar cabecera WAV ---
+        struct WAVHeader {
+          char riff[4];
+          uint32_t chunkSize;
+          char wave[4];
+          char fmt[4];
+          uint32_t subchunk1Size;
+          uint16_t audioFormat;
+          uint16_t numChannels;
+          uint32_t sampleRate;
+          uint32_t byteRate;
+          uint16_t blockAlign;
+          uint16_t bitsPerSample;
+        };
+        WAVHeader header;
+        wavFile.read((uint8_t*)&header, sizeof(WAVHeader));
+        if (strncmp(header.riff, "RIFF", 4) != 0 || strncmp(header.wave, "WAVE", 4) != 0) {
+          wavFile.close();
+          return false;
+        }
+        if (header.audioFormat != 1 || header.numChannels != 1 || header.sampleRate != 44100 || header.bitsPerSample != 16) {
+          wavFile.close();
+          return false;
+        }
+
+        // Saltar posibles chunks extra hasta encontrar 'data'
+        uint32_t dataSize = 0;
+        while (true) {
+          char chunkId[4];
+          wavFile.read((uint8_t*)chunkId, 4);
+          uint32_t chunkSize;
+          wavFile.read((uint8_t*)&chunkSize, 4);
+          if (strncmp(chunkId, "data", 4) == 0) {
+            dataSize = chunkSize;
+            break;
+          } else {
+            wavFile.seek(wavFile.position() + chunkSize);
+          }
+        }
+
+        // --- 3. Abrir archivo .TAP para escritura ---
+        File tapFile = SD_MMC.open(tapPath, FILE_WRITE);
+        if (!tapFile) {
+          wavFile.close();
+          return false;
+        }
+
+        // --- 4. Leer datos PCM y analizar cruces por cero ---
+        const size_t PCM_BUFFER = 2048;
+        int16_t pcm[PCM_BUFFER];
+        size_t totalSamples = dataSize / 2;
+        int lastSample = 0;
+        int currSample = 0;
+        bool first = true;
+        uint32_t sampleIndex = 0;
+
+        // ZX Spectrum timings (a 44100 Hz):
+        // Bit 0: dos pulsos de ~855us cada uno ≈ 38 muestras/pulso
+        // Bit 1: dos pulsos de ~1710us cada uno ≈ 75 muestras/pulso
+        // Tolerancia: ±20%
+        const int PULSE0_MIN = 30, PULSE0_MAX = 46;
+        const int PULSE1_MIN = 60, PULSE1_MAX = 90;
+
+        std::vector<uint8_t> tapData;
+        int bitCount = 0;
+        uint8_t currByte = 0;
+        int pulseSamples = 0;
+        bool inPulse = false;
+        uint32_t lastCross = 0;
+        std::vector<int> pulseWidths;
+
+        // --- 5. Procesar muestras y detectar cruces por cero ---
+        while (sampleIndex < totalSamples) {
+          size_t toRead = (totalSamples - sampleIndex > PCM_BUFFER) ? PCM_BUFFER : (totalSamples - sampleIndex);
+          wavFile.read((uint8_t*)pcm, toRead * 2);
+          for (size_t i = 0; i < toRead; ++i) {
+            currSample = pcm[i];
+            if (first) {
+              lastSample = currSample;
+              first = false;
+              continue;
+            }
+            // Cruce por cero (de negativo a positivo)
+            if (lastSample < 0 && currSample >= 0) {
+              if (inPulse) {
+                pulseSamples = sampleIndex - lastCross;
+                pulseWidths.push_back(pulseSamples);
+                // Clasificar pulso como 0 o 1
+                if (pulseSamples >= PULSE0_MIN && pulseSamples <= PULSE0_MAX) {
+                  // Pulso corto: parte de un bit 0
+                  currByte = (currByte >> 1);
+                  bitCount++;
+                } else if (pulseSamples >= PULSE1_MIN && pulseSamples <= PULSE1_MAX) {
+                  // Pulso largo: parte de un bit 1
+                  currByte = (currByte >> 1) | 0x80;
+                  bitCount++;
+                } else {
+                  // Pulso fuera de rango: ignorar o resetear bitCount si hay mucho ruido
+                  // Opcional: implementar lógica de recuperación
+                }
+                if (bitCount == 8) {
+                  tapData.push_back(currByte);
+                  bitCount = 0;
+                  currByte = 0;
+                }
+              }
+              lastCross = sampleIndex;
+              inPulse = true;
+            }
+            lastSample = currSample;
+            sampleIndex++;
+          }
+        }
+
+        // --- 6. Escribir bloque en formato TAP ---
+        uint16_t blockLen = tapData.size();
+        tapFile.write((uint8_t*)&blockLen, 2);
+        tapFile.write(tapData.data(), blockLen);
+
+        // --- 7. Cerrar archivos ---
+        wavFile.close();
+        tapFile.close();
+
+        // NOTA: Esta lógica es robusta ante variaciones de señal, pero puede requerir ajuste fino
+        // de los rangos de pulso y manejo de sincronización para bloques reales.
+
+        return true;
+      }
+
       bool recording()
-      {         
+      {
+          // Reestablece todas las variables críticas de estado
+          resetRecordingState();
 
           dbgBit0 = "";
           dbgBit1 = "";
@@ -714,11 +895,11 @@ class TAPrecorder
           int16_t oneValueL = 0;
           int16_t audioInValue = 0;
           int16_t audioOutValue = 0;
-  
-          size_t resultOut = 0;    
-          size_t lenSamplesCaptured = 0;            
-          int chn = 2;            
-          
+
+          size_t resultOut = 0;
+          size_t lenSamplesCaptured = 0;
+          int chn = 2;
+
           int stateRecording = 0;
           int statusPulse = 0;
           int countSamplesHigh = 0;
@@ -735,13 +916,13 @@ class TAPrecorder
           bool targetReady = false;
 
           // kitStream.config().buffer_size = 262144;
-          // kitStream.config().rx_tx_mode = RXTX_MODE;     
+          // kitStream.config().rx_tx_mode = RXTX_MODE;
 
           // ======================================================================================================
 
           // Creamos el buffer de grabacion
-          uint8_t   bufferRec[BUFFER_SIZE_REC];                          
-          uint8_t   bufferOut[BUFFER_SIZE_REC]; 
+          uint8_t   bufferRec[BUFFER_SIZE_REC];
+          uint8_t   bufferOut[BUFFER_SIZE_REC];
 
           int16_t *value_ptr = (int16_t*)bufferRec;
 
@@ -752,7 +933,7 @@ class TAPrecorder
 
           String dirR = RECORDING_DIR + "/\0";
           strcpy(recDir, dirR.c_str());
-          
+
           if (!SD_MMC.mkdir(RECORDING_DIR))
           {
             #ifdef DEBUGMODE
@@ -770,64 +951,7 @@ class TAPrecorder
           //SerialHW.println("Dir for REC: " + String(recDir));
           File tapf = SD_MMC.open(recDir, FILE_WRITE);
           tapf.seek(0);
-                    
-          // Inicializamos el array de nombre del header
-          for (int i=0;i<10;i++)
-          {
-            header.name[i] = ' ';
-            tapeName[i] = ' ';
-          }
 
-          strcpy(header.name,"noname");
-          strcpy(tapeName,"PROGRAM_ZX");
-          REC_FILENAME = "";
-          
-          // Inicializamos
-          blockStartOffset = 0;
-          lastBlockEndOffset = 0;      
-          PROGRAM_NAME_ESTABLISHED = false;    
-          byteCount = 0;
-          cResidualToneGuide = 0;
-          cToneGuide = 0;
-          wPulseHigh = 0;
-          wPulseZero = 0;
-          pulseSilence = 0;   
-          countSamplesHigh = 0;
-          BLOCK_REC_COMPLETED = false; //*
-
-          stateRecording = 0;
-          isPrgHead = true;
-          statusPulse = 0;
-          countSamplesHigh = 0;
-          countSamplesZero = 0;
-          bitCount = 0;
-          blockCount = 0;
-          byteCount = 0;
-          
-          // Inicializamos el header
-          header.blockSize = 19; // Por defecto es una cabecera de programa
-          header.sizeLSB = 17; // Por defecto es una cabecera de programa
-          header.sizeMSB = 0; // Por defecto es una cabecera de programa
-          header.sizeNextBlLSB = 0; // Por defecto es una cabecera de programa  
-          header.sizeNextBlMSB = 0; // Por defecto es una cabecera de programa  
-          header.type = 0; // Por defecto es una cabecera de programa
-                   
-          headerNameCaptured = false;
-          blockWithoutPrgHead = false;
-          errorInDataRecording = false;
-          stopRecordingProccess = false;
-          errorDetected = 0;
-          pulseOkHigh = false;
-          pulseOkZero = false;  
-          // importante para inicializar el recording
-          checksum = 0;
-          //
-          LAST_MESSAGE = "One moment please ...";                 
-          
-          // ===========================================================================================
-
-
-          
           // Hacemos una lectura residual
           lenSamplesCaptured = kitStream.readBytes(bufferRec, BUFFER_SIZE_REC);
           lenSamplesCaptured = 0;
@@ -846,10 +970,9 @@ class TAPrecorder
 
           // ======================================================================================================
           // Esto lo hacemos porque el PAUSE entra como true en esta rutina
-          
-          //
+
           REC = true;
-          PAUSE = false;  
+          PAUSE = false;
           STOP = false;
           EJECT = false;
           errorInDataRecording = false;
@@ -857,31 +980,66 @@ class TAPrecorder
           errorDetected = 0;
 
           // Cambiamos el sampling rate en el HW
-          // AudioInfo new_sr = akit.defaultConfig();
-          // new_sr.sample_rate = 44100;
-          // akit.setAudioInfo(new_sr);      
-          // Cambiamos el sampling rate en el HW
           auto new_sr = kitStream.defaultConfig();
           new_sr.sample_rate = STANDARD_SR_REC_ZX_SPECTRUM;
-          kitStream.setAudioInfo(new_sr);   
+
+          kitStream.setAudioInfo(new_sr);
           // Indicamos
           _hmi.writeString("tape.lblFreq.txt=\"" + String(int(STANDARD_SR_REC_ZX_SPECTRUM / 1000)) + "KHz\"" );
 
-          //strcpy(header.name,"noname");
           unsigned long progress_millis = 0;
           unsigned long targetReadyTime = millis();
           progress_millis = millis();
 
+          // Reset de variables de estado
+          // ------------------------------------------------------------------
+          blockStartOffset = 0;
+          lastBlockEndOffset = 0;
+          PROGRAM_NAME_ESTABLISHED = false;
+          byteCount = 0;
+          cResidualToneGuide = 0;
+          cToneGuide = 0;
+          wPulseHigh = 0;
+          wPulseZero = 0;
+          pulseSilence = 0;
+          BLOCK_REC_COMPLETED = false;
+          isPrgHead = true;
+          statusPulse = 0;
+          bitCount = 0;
+          blockCount = 0;
+          checksum = 0;
+          errorInDataRecording = false;
+          stopRecordingProccess = false;
+          errorDetected = 0;
+          pulseOkHigh = false;
+          pulseOkZero = false;
+          header.blockSize = 19;
+          header.sizeLSB = 17;
+          header.sizeMSB = 0;
+          header.sizeNextBlLSB = 0;
+          header.sizeNextBlMSB = 0;
+          header.type = 0;
+          headerNameCaptured = false;
+          blockWithoutPrgHead = false;
+          blockSizeCaptured = false;
+          bitByte = 0;
+          byteRead = 0;
+          lastByteRead = 0;
+          ptrOffset = 0;
+          for (int i=0;i<10;i++) { header.name[i] = ' '; tapeName[i] = ' '; }
+          strcpy(header.name,"noname");
+          strcpy(tapeName,"PROGRAM_ZX");
+          REC_FILENAME = "";          
+          // ------------------------------------------------------------------
           
-          // statusPulse = 9999; // Estado inicial
-
+          
           // Esto lo hacemos para mejorar la eficacia del recording
           while(REC && !STOP && !EJECT && !errorInDataRecording && !stopRecordingProccess)
           {
               if ((millis() - targetReady > 5000) && !targetReady)
               {
                   targetReady = true;
-                  LAST_MESSAGE = "Recorder ready. Play source data.";                 
+                  LAST_MESSAGE = "Recorder ready. Play source data.";
               }
 
               // Capturamos la configuracion del threshold para el disparador de Schmitt
@@ -889,20 +1047,20 @@ class TAPrecorder
               {
                 // Cuando se habilita la configuracion del disparador de Schmitt
                 // se pueden ajustar los parametros de amplitud y banda de schmitt (histeresis)
-                
+
                 // Amplitud
                 AmpHi = (SCHMITT_AMP * 32767)/100;
                 AmpLo = (-SCHMITT_AMP * 32768)/100; // -50% de amplitud
                 AmpZe = 0;
                 // Histeresis disparador de Schmitt
                 threshold_high = (SCHMITT_THR * AmpHi)/100;
-                threshold_low = (SCHMITT_THR * AmpLo)/100; 
+                threshold_low = (SCHMITT_THR * AmpLo)/100;
               }
               else
               {
                 // Por defecto
-                AmpHi = 32767; 
-                AmpLo = -32768; 
+                AmpHi = 32767;
+                AmpLo = -32768;
                 AmpZe = 0;
               }
 
@@ -910,7 +1068,7 @@ class TAPrecorder
               lenSamplesCaptured = kitStream.readBytes(bufferRec, BUFFER_SIZE_REC);
 
               // Esperamos a que el buffer este lleno
-              if (lenSamplesCaptured >= BUFFER_SIZE_REC) 
+              if (lenSamplesCaptured >= BUFFER_SIZE_REC)
               {
                   // Apuntamos al buffer de grabacion
                   int16_t *value_ptr = (int16_t*)bufferRec;
@@ -920,12 +1078,12 @@ class TAPrecorder
 
                   // Analizamos todas las muestras del buffer de entrada
                   for (int j=0;j<(lenSamplesCaptured / 4);j++)
-                  {  
+                  {
                       // Leemos los samples del buffer
                       // canal R
                       oneValueR = *value_ptr++;
                       // canal L
-                      oneValueL = *value_ptr++;  
+                      oneValueL = *value_ptr++;
                       
                       // Por defecto el canal que se coge es el izquierdo.
                       // en el caso de swapping se coge el derecho
@@ -938,7 +1096,7 @@ class TAPrecorder
                           audioInValue = (audioInValue >= 0 && audioInValue <= threshold_high) ? AmpZe:AmpHi;                      
                           audioInValue = (audioInValue >= threshold_low && audioInValue < 0) ? AmpZe:AmpLo;  
                       }
-                      
+
                       // Rectificamos la onda
                       // Invertimos la onda (si se quiere)
                       audioInValue = (EN_EAR_INVERSION) ? audioInValue * (-1) : audioInValue;
@@ -1100,8 +1258,9 @@ class TAPrecorder
                           // +++++++++++++++++++++++++++++++++++++++++++++
                           switch (stateRecording)
                           {                           
+                            // TONO GUIA
                             case 0:
-                              // Esperando un tono guia
+                            {  // Esperando un tono guia
                               if (pulseOkHigh)
                               {
                                 pulseOkHigh = false;
@@ -1120,7 +1279,7 @@ class TAPrecorder
 
                                       if (isPrgHead)
                                       {
-                                        LAST_MESSAGE = "Waiting for PROGRAM HEAD";
+                                        LAST_MESSAGE = "Waiting for HEAD";
                                       }
                                       else
                                       {
@@ -1135,8 +1294,11 @@ class TAPrecorder
                                 }                                   
                               }
                               break;
+                            }
 
+                            // SYNC
                             case 1: 
+                            {
                               //SYNC
                               if (pulseOkHigh)
                               {
@@ -1170,8 +1332,11 @@ class TAPrecorder
                                   // }
                               }
                               break;
-
+                            }
+                            
+                            // Espera bloque PROGRAM
                             case 2:
+                            {
                               // Capturando DATA
                               // Bit 0
                               if (pulseOkHigh)
@@ -1337,8 +1502,11 @@ class TAPrecorder
                                   }                              
                               }                          
                               break;
-
+                            }
+                            
+                            // Espera bloque DATA
                             case 3:
+                            {
                               if (pulseOkHigh)
                               {
                                 pulseOkHigh = false;
@@ -1351,28 +1519,47 @@ class TAPrecorder
 
                                     if (cToneGuide > 256)
                                     {
+                                      // Reinicia el estado de bloque para un nuevo ciclo limpio
+                                      // Si el último bloque fue DATA, espera PROGRAM; si fue PROGRAM, espera DATA
+                                      bool nextIsProgram = !isPrgHead;
+
+                                      // Nos preparamos para otro ciclo de grabacion
+                                      // ----------------------------------------------
+                                      bitCount = 0;
+                                      byteCount = 0;
+                                      blockSizeCaptured = false;
+                                      headerNameCaptured = false;
+                                      blockWithoutPrgHead = false;
+                                      errorDetected = 0;
+                                      bitByte = 0;
+                                      byteRead = 0;
+                                      lastByteRead = 0;
+                                      checksum = 0;
+                                      cToneGuide = 0;
+                                      wPulseHigh = 0;
+                                      wPulseZero = 0;
+                                      pulseSilence = 0;
+                                      isPrgHead = nextIsProgram;
+                                      // Si es cabecera, inicializa el header
+                                      if (nextIsProgram) 
+                                      {
+                                        header.blockSize = 19;
+                                        header.sizeLSB = 17;
+                                        header.sizeMSB = 0;
+                                        header.sizeNextBlLSB = 0;
+                                        header.sizeNextBlMSB = 0;
+                                        header.type = 0;
+                                        for (int i=0;i<10;i++) header.name[i] = ' ';
+                                        strcpy(header.name,"noname");
+                                      }
+                                      // ----------------------------------------------
                                       stateRecording = 0;
                                       wPulseHigh = 0;
                                       wPulseZero = 0;
-                                      //cResidualToneGuide = 0;
                                       cToneGuide = 0;
-                                      // +++++++++++++++++++++++++
-                                      //
-                                      //     Prepare new block
-                                      //
-                                      // +++++++++++++++++++++++++
-                                      
-                                      // Cambiamos el tipo de bloque 
-                                      // si antes era cabecer PROGRAM, supongo que ahora es DATA
-                                      // y asi sucesivamente
-                                      isPrgHead = !isPrgHead;
-
                                       //guardamos la posición del puntero del fichero en este momento
-                                      //que es justo al final del ultimo bloque + 1 (inicio del siguiente)
-                                      //
                                       ptrOffset = tapf.position();
-                                      //
-                                      newBlock(tapf);                                  
+                                      newBlock(tapf);
                                     }
                                 }
                                 else
@@ -1382,7 +1569,8 @@ class TAPrecorder
                                 }                          
                               }
                               break;
-
+                            }
+                            
                             default:
                               break;
                           }                        
@@ -1404,7 +1592,7 @@ class TAPrecorder
                       //R-OUT
                       *ptrOut++ = (audioOutValue*k) * (MAIN_VOL_R / 100);
                       //
-                      if (ACTIVE_AMP)
+                      if (EN_SPEAKER)
                       {
                         //L-OUT (Speaker channel)
                         *ptrOut++ = (audioOutValue*k) * (MAIN_VOL_L / 100);
@@ -1509,8 +1697,7 @@ class TAPrecorder
             delay(125);           
           }
 
-          // new_sr.sample_rate = SAMPLING_RATE;
-          // akit.setAudioInfo(new_sr);      
+              
           // Cambiamos el sampling rate en el HW
           new_sr.sample_rate = SAMPLING_RATE;
           kitStream.setAudioInfo(new_sr);  

@@ -55,8 +55,25 @@ int SD_SPEED_MHZ = 4;
 
 // Inversion de pulso
 // ------------------
-uint8_t POLARIZATION = 0;             // 0 = DOWN, 1 = HIGH
+// ******************************************************************************
+// POLARIZACIÓN POR DEFECTO: HIGH (1) para compatibilidad con TAPIR
+// ******************************************************************************
+// TAPIR (emulador de referencia) genera señales con polaridad INVERSA por defecto
+// Esto significa que el nivel inicial es HIGH, y el primer pulso baja a LOW.
+// Para compatibilidad con TZX generados por TAPIR (como BC's Quest for Tires),
+// powaDCR debe usar la misma polaridad por defecto.
+// 
+// POLARIZATION: 0 = LOW inicial (normal), 1 = HIGH inicial (inversa/TAPIR)
+// ******************************************************************************
+// Empezamos así porque ahora lo primero es aplicar el edge antes del pulso a generar y no al final para el siguiente.
+// entonces hay que empezar en HIGH para que el primer pulso baje a LOW. Si empezamos en LOW, el primer pulso sube a HIGH 
+// y eso no es compatible con el estandar TZX.
+uint8_t POLARIZATION = 1;                   
 uint8_t EDGE_EAR_IS = POLARIZATION;
+bool CHANGE_PZX_LEVEL = false;
+bool FORZE_LEVEL = false; // Forzar nivel inicial en bloques PZX
+bool KEEP_CURRENT_EDGE = false; // Mantener el nivel actual sin cambios
+int LAST_PULSE_WIDTH = 0;
 
 // ************************************************************
 //
@@ -83,7 +100,7 @@ struct ConfigEntry {
 
 struct tRlePulse
 {
-    uint16_t pulse_len; // Longitud del pulso en T-States
+    uint32_t pulse_len; // Longitud del pulso en T-States (puede ser hasta 31 bits en PZX)
     uint16_t repeat;    // Número de repeticiones (será 1 para pulsos normales)
 };
 
@@ -141,7 +158,7 @@ struct tSymbol
   tPrle* pilotStream = nullptr;         // Pilot and sync data stream
   int offsetDataStream = 0;
   int offsetPilotDataStream = 0;
-  int* dataStream = nullptr;            // Data stream
+  uint8_t* dataStream = nullptr;            // Data stream
 };
 
 // Estructura del descriptor de bloques
@@ -167,7 +184,7 @@ struct tTZXBlockDescriptor
   int offset = 0;
   int size = 0;
   int chk = 0;
-  int pauseAfterThisBlock = 1000;   //ms
+  double pauseAfterThisBlock = 1000.0;   //ms
   int lengthOfData = 0;
   int offsetData = 0;
   char name[30];
@@ -194,6 +211,7 @@ struct tTZXBlockDescriptor
   int samplingRate = 79;
   bool signalLvl = false;  //true == polarization UP, false == DOWN
   uint8_t edge = POLARIZATION;       // Edge of the begining of the block. Only for playing
+  
 };
 
 // Estructura tipo TZX
@@ -204,6 +222,7 @@ struct tTZX
   int numBlocks = 0;                        // Numero de bloques
   bool hasGroupBlocks = false; 
   tTZXBlockDescriptor* descriptor = nullptr;          // Descriptor
+  bool availableForREM = true;
 };
 
 struct tPZXBlockDescriptor
@@ -253,21 +272,23 @@ struct tRadioList
 // En little endian. Formato PZX
 struct tPZX
 {
-  char tag[5] = {""};                         // el tag son 4 caracteres + /0
-  int numBlocks = 0;                      // Numero de bloques
-  char name[11] = {""};                      // Nombre del PZX
+  char tag[5] = {""};                           // el tag son 4 caracteres + /0
+  int numBlocks = 0;                            // Numero de bloques
+  char name[11] = {""};                         // Nombre del PZX
   uint32_t size = 0;
   uint32_t csw_sampling_rate;
   tPZXBlockDescriptor* descriptor = nullptr;
+  bool availableForREM = false;
 };
 
 // Estructura tipo TAP
 struct tTAP 
 {
-    char name[11];                                  // Nombre del TAP
-    uint32_t size = 0;                                   // Tamaño
-    int numBlocks = 0;                              // Numero de bloques
+    char name[11];                              // Nombre del TAP
+    uint32_t size = 0;                          // Tamaño
+    int numBlocks = 0;                          // Numero de bloques
     tTAPBlockDescriptor* descriptor;            // Descriptor
+    bool availableForREM = true;
 };
 
 // Procesador de TAP
@@ -395,12 +416,13 @@ bool disable_auto_media_stop = false;
 
 // Power led
 bool POWERLED_ON = true;
-bool PWM_POWER_LED = false;
+bool ENABLE_POWER_LED = false;
 uint8_t POWERLED_DUTY = POWER_LED_INTENSITY;
 
 uint8_t TAPESTATE = 0;
 uint8_t LAST_TAPESTATE = 0;
-
+bool  ADD_ONE_SAMPLE_COMPENSATION = false;
+bool MCP23017_AVAILABLE = true;
 
 // --------------------------------------------------------------------------
 //
@@ -415,8 +437,8 @@ uint8_t LAST_TAPESTATE = 0;
 
 // bool FIRST_BLOCK_INVERTED = false;
 //edge SCOPE = down;
-bool APPLY_END = true;
-int SAMPLING_RATE = STANDARD_SR_REC_ZX_SPECTRUM;      //STANDARD_SR_ZX_SPECTRUM               // 44100 
+//bool APPLY_END = false;
+double SAMPLING_RATE = STANDARD_SR_8_BIT_MACHINE;      //STANDARD_SR_ZX_SPECTRUM               // 44100 
 int BASE_SR = STANDARD_SR_REC_ZX_SPECTRUM;            //STANDARD_SR_ZX_SPECTRUM               // 44100
 int BASE_SR_TAP = 31250;        //STANDARD_SR_8_BIT_MACHINE_TAP         // 44100
 int LAST_SAMPLING_RATE = 22050; //44100;
@@ -579,6 +601,7 @@ int LOOP_END = 0;
 int BL_LOOP_END = 0;
 bool WAITING_FOR_USER_ACTION = false;
 int LAST_SILENCE_DURATION = 0;
+int LAST_RSAMPLES_CALC = 0;
 
 // Screen
 bool SCREEN_LOADING = 0;
@@ -782,6 +805,7 @@ bool IGNORE_DSC = false;
 // Auto-update
 String HMI_MODEL = "";
 
+
 // Declaraciones de metodos
 // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 // void save();
@@ -803,7 +827,7 @@ ConfigEntry configEntries[] =
   {"EQHopt", CONFIG_TYPE_FLOAT, &EQ_HIGH},
   {"EQMopt", CONFIG_TYPE_FLOAT, &EQ_MID},
   {"EQLopt", CONFIG_TYPE_FLOAT, &EQ_LOW},
-  {"PLEopt", CONFIG_TYPE_BOOL, &PWM_POWER_LED},
+  {"PLEopt", CONFIG_TYPE_BOOL, &ENABLE_POWER_LED},
   {"SFFopt", CONFIG_TYPE_BOOL, &SORT_FILES_FIRST_DIR},
   {"SPKopt", CONFIG_TYPE_BOOL, &EN_SPEAKER},
   {"RBUFopt", CONFIG_TYPE_BOOL, &RADIO_BUFFERED},
@@ -1182,4 +1206,103 @@ int getFreeFileDescriptors() {
     return MAX_FD - count;
 }
 
+// Escribe el estado (HIGH/LOW) en un pin del MCP23017 sin afectar los demás
+void MCP23017_writePin(uint8_t pin, uint8_t state, uint8_t i2c_addr = 0x20) {
+    // Determina si el pin está en GPIOA (0-7) o GPIOB (8-15)
+    uint8_t reg = (pin < 8) ? 0x12 : 0x13; // GPIOA=0x12, GPIOB=0x13
+    uint8_t pin_mask = 1 << (pin % 8);
+
+    // Lee el valor actual del registro
+    Wire1.beginTransmission(i2c_addr);
+    Wire1.write(reg);
+    Wire1.endTransmission();
+    Wire1.requestFrom(i2c_addr, (uint8_t)1);
+    uint8_t current = 0;
+    if (Wire1.available()) current = Wire1.read();
+
+    // Modifica solo el bit correspondiente
+    if (state == HIGH)
+        current |= pin_mask;
+    else
+        current &= ~pin_mask;
+
+    // Escribe el nuevo valor
+    Wire1.beginTransmission(i2c_addr);
+    Wire1.write(reg);
+    Wire1.write(current);
+    Wire1.endTransmission();
+}
+
+// Lee el estado (HIGH/LOW) de un pin del MCP23017 sin afectar los demás
+uint8_t MCP23017_readPin(uint8_t pin, uint8_t i2c_addr = 0x20) {
+  // Determina si el pin está en GPIOA (0-7) o GPIOB (8-15)
+  uint8_t reg = (pin < 8) ? 0x12 : 0x13; // GPIOA=0x12, GPIOB=0x13
+  uint8_t pin_mask = 1 << (pin % 8);
+
+  // Lee el valor actual del registro
+  Wire1.beginTransmission(i2c_addr);
+  Wire1.write(reg);
+  Wire1.endTransmission();
+  Wire1.requestFrom(i2c_addr, (uint8_t)1);
+  uint8_t current = 0;
+  if (Wire1.available()) current = Wire1.read();
+
+    // Devuelve HIGH o LOW como digitalRead
+    return (current & pin_mask) ? HIGH : LOW;
+}
+
+void remDetection()
+{
+    bool isAvailableForREM = false;
+
+    if (TYPE_FILE_LOAD == "TAP")
+    {
+        isAvailableForREM = myTAP.availableForREM;
+    }
+    else if (TYPE_FILE_LOAD == "TZX" || TYPE_FILE_LOAD == "TSX" || TYPE_FILE_LOAD == "CDT")
+    {
+        isAvailableForREM = myTZX.availableForREM;
+    }
+    else if (TYPE_FILE_LOAD == "PZX")
+    {
+        isAvailableForREM = myPZX.availableForREM;
+    }
+    else
+    {
+        isAvailableForREM = false;
+    }
+          
+    if (REM_ENABLE && isAvailableForREM)
+    {                        
+        if (digitalRead(GPIO_MSX_REMOTE_PAUSE) == LOW && !REM_DETECTED)
+        {
+            // Informamos del REM detectado
+            myNex.writeStr("tape.wavind.txt","REM");
+            logln("REM detected");
+            // Retardo de arranque de motor
+            delay(1000/50);
+            // Flag del REM a true
+            REM_DETECTED = true;
+        }
+        else if (digitalRead(GPIO_MSX_REMOTE_PAUSE) != LOW && REM_DETECTED)
+        {
+            // Recuperamos el mensaje original
+            if (WAV_8BIT_MONO)
+            {
+                myNex.writeStr("tape.wavind.txt","WAV8");
+            }
+            else
+            {
+                myNex.writeStr("tape.wavind.txt","");
+            }
+            
+            logln("REM released");
+            // Retardo de parada de motor
+            delay(1000/50);
+
+            // Reseteamos el flag
+            REM_DETECTED = false;
+        }
+    }
+}
 

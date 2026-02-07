@@ -61,6 +61,7 @@
 #include <SD_MMC.h>
 #include <WiFi.h>
 #include <vector>
+#include <Wire.h>
 
 #include "esp32-hal-psram.h"
 #include "EasyNextionLibrary.h"
@@ -91,6 +92,7 @@ EasyNex myNex(SerialHW);
 #include "AudioTools/CoreAudio/AudioFilter/Equalizer.h"
 #include "AudioTools/Disk/AudioSourceURL.h"
 #include "AudioTools/Communication/AudioHttp.h"
+//#include "AudioTools/CoreAudio/AudioLoggerSTD.h"
 
 
 #ifdef BLUETOOTH_ENABLE
@@ -101,6 +103,7 @@ EasyNex myNex(SerialHW);
 DriverPins powadcr_pins;
 AudioBoard powadcr_board(audio_driver::AudioDriverES8388,powadcr_pins);
 AudioBoardStream kitStream(powadcr_board);
+
 
 #include "HMI.h"
 HMI hmi;
@@ -235,12 +238,22 @@ bool powerLedFixed = false;
 
 
 //
-void actuatePowerLed(bool enable, uint8_t duty)
+void actuatePowerLed(uint8_t state)
 {
-  uint8_t dutyEnd = 0;
-
-  dutyEnd = enable ? duty : 0;
-  analogWrite(powerLed, dutyEnd);
+  //analogWrite(powerLed, dutyEnd);
+  //mcp1.digitalWrite(8, mcp0.digitalRead(0)); 
+  if (!ENABLE_POWER_LED) state = LOW;
+  
+  if (!MCP23017_AVAILABLE)
+  {
+    // Salida por el pin #powerLed
+    pinMode(powerLed, OUTPUT);
+    analogWrite(powerLed, state);
+  }
+  else
+  {
+    MCP23017_writePin(MCP_LED_IO_PIN_PA, state, I2C_MCP23017_ADDR);
+  }
 }
 
 void freeMemoryFromDescriptorTZX(tTZXBlockDescriptor *descriptor)
@@ -257,11 +270,49 @@ void freeMemoryFromDescriptorTZX(tTZXBlockDescriptor *descriptor)
       break;
 
     case 25: // bloque 0x19 - GDB
-      // Hay que liberar los arrays
-      free(descriptor[n].symbol.symDefPilot);
-      free(descriptor[n].symbol.symDefData);
-      free(descriptor[n].symbol.pilotStream);
-      free(descriptor[n].symbol.dataStream);
+      // Liberar symDefPilot y sus pulse_array internos
+      if (descriptor[n].symbol.symDefPilot != nullptr)
+      {
+        for (int i = 0; i < descriptor[n].symbol.ASP; i++)
+        {
+          if (descriptor[n].symbol.symDefPilot[i].pulse_array != nullptr)
+          {
+            free(descriptor[n].symbol.symDefPilot[i].pulse_array);
+            descriptor[n].symbol.symDefPilot[i].pulse_array = nullptr;
+          }
+        }
+        free(descriptor[n].symbol.symDefPilot);
+        descriptor[n].symbol.symDefPilot = nullptr;
+      }
+
+      // Liberar pilotStream
+      if (descriptor[n].symbol.pilotStream != nullptr)
+      {
+        free(descriptor[n].symbol.pilotStream);
+        descriptor[n].symbol.pilotStream = nullptr;
+      }
+
+      // Liberar symDefData y sus pulse_array internos
+      if (descriptor[n].symbol.symDefData != nullptr)
+      {
+        for (int i = 0; i < descriptor[n].symbol.ASD; i++)
+        {
+          if (descriptor[n].symbol.symDefData[i].pulse_array != nullptr)
+          {
+            free(descriptor[n].symbol.symDefData[i].pulse_array);
+            descriptor[n].symbol.symDefData[i].pulse_array = nullptr;
+          }
+        }
+        free(descriptor[n].symbol.symDefData);
+        descriptor[n].symbol.symDefData = nullptr;
+      }
+
+      // Liberar dataStream
+      if (descriptor[n].symbol.dataStream != nullptr)
+      {
+        free(descriptor[n].symbol.dataStream);
+        descriptor[n].symbol.dataStream = nullptr;
+      }
       break;
 
     default:
@@ -1036,6 +1087,15 @@ void WavRecording()
   wavfile.close();
 
   WAVFILE_PRELOAD = true;
+
+  if (taprec.convertWAVtoTAP(REC_FILENAME.c_str(),"/test.tap")) 
+  {
+    LAST_MESSAGE = "WAV to TAP conversion done. Saved as /test.tap";
+  } else {
+    LAST_MESSAGE = "WAV to TAP conversion failed.";
+  }
+
+  logln("WAV to TAP conversion done.");
 }
 
 void stopRecording()
@@ -2298,7 +2358,8 @@ void RadioPlayer()
             currentRadioStation = nextRadioStation(PATH_FILE_TO_LOAD, radioName, radioUrlBuffer, sizeof(radioUrlBuffer), FFWIND);
             updateDialIndicator(currentRadioStation);
             
-            if (PLAY) {
+            if (PLAY) 
+            {
                 LAST_MESSAGE = "Tuning to " + radioName + "...";
                 
                 // 4. Reiniciar el pipeline de audio.
@@ -2312,7 +2373,9 @@ void RadioPlayer()
                 taskParams.new_url = true;
                 xTaskCreatePinnedToCore(radio_network_task, "RadioNetworkTask", 8192, &taskParams, 1, &networkTaskHandle, 0);
 
-            } else {
+            } 
+            else 
+            {
                 LAST_MESSAGE = "Select: " + radioName;
             }
             
@@ -2354,12 +2417,17 @@ void RadioPlayer()
         // }
         
         // ✅ GESTIÓN DEL EXPLORADOR DE EMISORAS (REINTEGRADO)
-        if (BB_OPEN || BB_UPDATE) {
-            while (BB_OPEN || BB_UPDATE) {
+        if (BB_OPEN || BB_UPDATE) 
+        {
+            while (BB_OPEN || BB_UPDATE) 
+            {
                 hmi.openBlockMediaBrowser(audiolist);
             }
-        } else if (UPDATE_HMI || UPDATE) {
-            if (BLOCK_SELECTED > 0 && BLOCK_SELECTED <= TOTAL_BLOCKS) {
+        } 
+        else if (UPDATE_HMI || UPDATE) 
+        {
+            if (BLOCK_SELECTED > 0 && BLOCK_SELECTED <= TOTAL_BLOCKS) 
+            {
                 int currentPointer = BLOCK_SELECTED - 1;
                 currentRadioStation = nextRadioStation(PATH_FILE_TO_LOAD, radioName, radioUrlBuffer, sizeof(radioUrlBuffer), true, currentPointer, true);
                 
@@ -2442,7 +2510,15 @@ void RadioPlayer()
                 break;
 
             case 0: // Conectando a la emisora
-                if (PLAY) {
+                if (PLAY) 
+                {
+                    bufferw = 0;
+                    statusSignalOk = false;
+                    isBuffering = true;
+                    radioBuffer.clear();                   
+                    taskParams.new_url = false;
+                    urlStream.end();
+
                     if (!USE_SSL_STATIONS && String(radioUrlBuffer).startsWith("https://")) {
                         LAST_MESSAGE = "Error: SSL URL not permitted.";
                         PLAY = false;
@@ -2463,19 +2539,27 @@ void RadioPlayer()
                 break;
 
             case 1: // ESTADO PRINCIPAL: REPRODUCCIÓN (CONSUMIDOR)
-                if (PLAY) {
-                    if (isBuffering) {
+                if (PLAY) 
+                {
+                    if (isBuffering) 
+                    {
                         LAST_MESSAGE = "Buffering: " + String((radioBuffer.getAvailable() * 100) / RADIO_BUFFER_SIZE) + "%";
-                        if (radioBuffer.getAvailable() >= BUFFER_START_THRESHOLD) {
+                        if (radioBuffer.getAvailable() >= BUFFER_START_THRESHOLD) 
+                        {
                             logln("Buffer filled. Starting playback.");
                             isBuffering = false;
                             LAST_MESSAGE = "Playing: " + radioName;
                         }
-                    } else {
-                        if (radioBuffer.getAvailable() < BUFFER_STOP_THRESHOLD) {
+                    } 
+                    else 
+                    {
+                        if (radioBuffer.getAvailable() < BUFFER_STOP_THRESHOLD) 
+                        {
                             logln("Buffer low. Pausing to re-buffer.");
                             isBuffering = true;
-                        } else {
+                        } 
+                        else 
+                        {
                             size_t available = radioBuffer.getAvailable();
                             size_t bytesToRead = min(available, (size_t)RADIO_DECODE_BUFFER_SIZE);
                             if (bytesToRead > 0) {
@@ -2488,7 +2572,9 @@ void RadioPlayer()
                             }
                         }
                     }
-                } else if (STOP || PAUSE) {
+                } 
+                else if (STOP || PAUSE) 
+                {
                     playerState = 10;
                     PLAY = false;
                     bufferw = 0;
@@ -3871,6 +3957,10 @@ void playingFile()
 
   kitStream.setAudioInfo(new_sr); 
 
+  // Inicializamos el nivel de la señal según la polarización seleccionada  
+  //EDGE_EAR_IS = INVERSETRAIN ? POLARIZATION ^ 1: POLARIZATION; 
+
+
   // Por defecto
 
   if (TYPE_FILE_LOAD == "TAP")
@@ -3890,15 +3980,18 @@ void playingFile()
     if (OUT_TO_WAV)
     {
         // Configuramos el encoder WAV directament
-        AudioInfo wavencodercfg(SAMPLING_RATE, 2, 16);
+        AudioInfo wavencodercfg(DEFAULT_WAV_SAMPLING_RATE_REC, 2, 16);
         // Iniciamos el stream
         encoderOutWAV.begin(wavencodercfg);
         
         // Verificamos la configuración final
-        logln("Sampling rate changed for TAP file: " + String(SAMPLING_RATE)  + "Hz");
+        logln("Sampling rate changed for TAP file: " + String(DEFAULT_WAV_SAMPLING_RATE_REC)  + "Hz");
         logln("WAV encoder - Out to WAV: " + String(encoderOutWAV.audioInfo().sample_rate) + 
               "Hz, Bits: " + String(encoderOutWAV.audioInfo().bits_per_sample) + 
               ", Channels: " + String(encoderOutWAV.audioInfo().channels));  
+
+        LAST_MESSAGE = "Now output will be muted."; 
+        delay(2000);             
     }
 
     // Indicamos el sampling rate
@@ -3943,15 +4036,18 @@ void playingFile()
     if (OUT_TO_WAV)
     {
         // Configuramos el encoder WAV directament
-        AudioInfo wavencodercfg(SAMPLING_RATE, 2, 16);
+        AudioInfo wavencodercfg(DEFAULT_WAV_SAMPLING_RATE_REC, 2, 16);
         // Iniciamos el stream
         encoderOutWAV.begin(wavencodercfg);
         
         // Verificamos la configuración final
-        logln("Sampling rate changed for TZX format file: " + String(SAMPLING_RATE)  + "Hz");
+        logln("Sampling rate changed for TZX format file: " + String(DEFAULT_WAV_SAMPLING_RATE_REC)  + "Hz");
         logln("WAV encoder - Out to WAV: " + String(encoderOutWAV.audioInfo().sample_rate) + 
               "Hz, Bits: " + String(encoderOutWAV.audioInfo().bits_per_sample) + 
-              ", Channels: " + String(encoderOutWAV.audioInfo().channels));  
+              ", Channels: " + String(encoderOutWAV.audioInfo().channels)); 
+        
+        LAST_MESSAGE = "Now output will be muted.";
+        delay(2000);
     }
 
     // Indicamos el sampling rate
@@ -3994,12 +4090,12 @@ void playingFile()
     if (OUT_TO_WAV)
     {
         // Configuramos el encoder WAV directament
-        AudioInfo wavencodercfg(SAMPLING_RATE, 2, 16);
+        AudioInfo wavencodercfg(DEFAULT_WAV_SAMPLING_RATE_REC, 2, 16);
         // Iniciamos el stream
         encoderOutWAV.begin(wavencodercfg);
         
         // Verificamos la configuración final
-        logln("Sampling rate changed for PZX format file: " + String(SAMPLING_RATE)  + "Hz");
+        logln("Sampling rate changed for PZX format file: " + String(DEFAULT_WAV_SAMPLING_RATE_REC)  + "Hz");
         logln("WAV encoder - Out to WAV: " + String(encoderOutWAV.audioInfo().sample_rate) + 
               "Hz, Bits: " + String(encoderOutWAV.audioInfo().bits_per_sample) + 
               ", Channels: " + String(encoderOutWAV.audioInfo().channels));  
@@ -4139,43 +4235,51 @@ void verifyConfigFileForSelection()
           logln("");
           log("Sampling rate: " + String(SAMPLING_RATE));
 
-          switch (SAMPLING_RATE)
+          int sr_sel = (int)SAMPLING_RATE;
+
+          switch (sr_sel)
           {
-          case 48000:
-            hmi.writeString("menuAudio2.r0.val=1");
-            hmi.writeString("menuAudio2.r1.val=0");
-            hmi.writeString("menuAudio2.r2.val=0");
-            hmi.writeString("menuAudio2.r3.val=0");
-            break;
-
-          case 44100:
-            hmi.writeString("menuAudio2.r0.val=0");
-            hmi.writeString("menuAudio2.r1.val=1");
-            hmi.writeString("menuAudio2.r2.val=0");
-            hmi.writeString("menuAudio2.r3.val=0");
-            break;
-
-          case 32000:
-            hmi.writeString("menuAudio2.r0.val=0");
-            hmi.writeString("menuAudio2.r1.val=0");
-            hmi.writeString("menuAudio2.r2.val=1");
-            hmi.writeString("menuAudio2.r3.val=0");
-            break;
-
-          case 22050:
-            hmi.writeString("menuAudio2.r0.val=0");
-            hmi.writeString("menuAudio2.r1.val=0");
-            hmi.writeString("menuAudio2.r2.val=0");
-            hmi.writeString("menuAudio2.r3.val=1");
-            break;
-
-          default:
-            // Por defecto es 44.1KHz
-            hmi.writeString("menuAudio2.r0.val=0");
-            hmi.writeString("menuAudio2.r1.val=0");
-            hmi.writeString("menuAudio2.r2.val=0");
-            hmi.writeString("menuAudio2.r3.val=1");
-            break;
+            case 48000:
+            {
+              hmi.writeString("menuAudio2.r0.val=1");
+              hmi.writeString("menuAudio2.r1.val=0");
+              hmi.writeString("menuAudio2.r2.val=0");
+              hmi.writeString("menuAudio2.r3.val=0");
+              break;
+            }
+            case 44100:
+            {
+              hmi.writeString("menuAudio2.r0.val=0");
+              hmi.writeString("menuAudio2.r1.val=1");
+              hmi.writeString("menuAudio2.r2.val=0");
+              hmi.writeString("menuAudio2.r3.val=0");
+              break;
+            }
+            case 32000:
+            {
+              hmi.writeString("menuAudio2.r0.val=0");
+              hmi.writeString("menuAudio2.r1.val=0");
+              hmi.writeString("menuAudio2.r2.val=1");
+              hmi.writeString("menuAudio2.r3.val=0");
+              break;
+            }
+            case 22050:
+            {
+              hmi.writeString("menuAudio2.r0.val=0");
+              hmi.writeString("menuAudio2.r1.val=0");
+              hmi.writeString("menuAudio2.r2.val=0");
+              hmi.writeString("menuAudio2.r3.val=1");
+              break;
+            }
+            default:
+            {
+              // Por defecto es 44.1KHz
+              hmi.writeString("menuAudio2.r0.val=0");
+              hmi.writeString("menuAudio2.r1.val=0");
+              hmi.writeString("menuAudio2.r2.val=0");
+              hmi.writeString("menuAudio2.r3.val=1");
+              break;
+            }
           }
         }
         else if ((fileCfg[i].cfgLine).indexOf("zerolevel") != -1)
@@ -4194,22 +4298,22 @@ void verifyConfigFileForSelection()
             hmi.writeString("menuAudio2.lvlLowZero.val=0");
           }
         }
-        else if ((fileCfg[i].cfgLine).indexOf("blockend") != -1)
-        {
-          APPLY_END = getValueOfParam(fileCfg[i].cfgLine, "blockend").toInt();
+        // else if ((fileCfg[i].cfgLine).indexOf("blockend") != -1)
+        // {
+        //   APPLY_END = getValueOfParam(fileCfg[i].cfgLine, "blockend").toInt();
 
-          logln("");
-          log("Terminator forzed: " + String(APPLY_END));
+        //   logln("");
+        //   log("Terminator forzed: " + String(APPLY_END));
 
-          if (APPLY_END == 1)
-          {
-            hmi.writeString("menuAudio2.enTerm.val=1");
-          }
-          else
-          {
-            hmi.writeString("menuAudio2.enTerm.val=0");
-          }
-        }
+        //   if (APPLY_END == 1)
+        //   {
+        //     hmi.writeString("menuAudio2.enTerm.val=1");
+        //   }
+        //   else
+        //   {
+        //     hmi.writeString("menuAudio2.enTerm.val=0");
+        //   }
+        // }
         else if ((fileCfg[i].cfgLine).indexOf("polarized") != -1)
         {
           if ((getValueOfParam(fileCfg[i].cfgLine, "polarized")) == "1")
@@ -4568,14 +4672,14 @@ void RECready()
 
 void getAudioSettingFromHMI()
 {
-  if (myNex.readNumber("menuAdio.enTerm.val") == 1)
-  {
-    APPLY_END = true;
-  }
-  else
-  {
-    APPLY_END = false;
-  }
+  // if (myNex.readNumber("menuAdio.enTerm.val") == 1)
+  // {
+  //   APPLY_END = true;
+  // }
+  // else
+  // {
+  //   APPLY_END = false;
+  // }
 
   if (myNex.readNumber("menuAdio.polValue.val") == 1)
   {
@@ -5060,7 +5164,8 @@ void recoverEdgeBeginOfBlock()
   else
   {
     // Empezamos con el tipo de polarizacion ya que este filetype no es sensible a esta
-    EDGE_EAR_IS = POLARIZATION;
+    // Inicializamos el nivel de la señal según la polarización seleccionada  
+    EDGE_EAR_IS = INVERSETRAIN ? POLARIZATION ^ 1: POLARIZATION; 
   }
 }
 
@@ -5090,38 +5195,81 @@ void recCondition()
   AUTO_STOP = false;  
 }
 
-void remDetection()
-{
-  if (REM_ENABLE)
-  {
-    //logln("Check if REM is active");
+// void remDetection()
+// {
+//   // if (MCP23017_AVAILABLE)
+//   // {
+//   //   // Leemos el estado del MCP23017
+//   //   if (REM_ENABLE)
+//   //   {
+//   //     //logln("Check if REM is active");
 
-    if (digitalRead(GPIO_MSX_REMOTE_PAUSE) == LOW && !REM_DETECTED)
-    {
-      // Informamos del REM detectado
-      hmi.writeString("tape.wavind.txt=\"REM\"");
-      logln("REM detected");
-      // Flag del REM a true
-      REM_DETECTED = true;
-    }
-    else if (digitalRead(GPIO_MSX_REMOTE_PAUSE) != LOW && REM_DETECTED)
-    {
-        // Recuperamos el mensaje original
-        if (WAV_8BIT_MONO)
-        {
-          hmi.writeString("tape.wavind.txt=\"WAV8\"");
-        }
-        else
-        {
-          hmi.writeString("tape.wavind.txt=\"\"");
-        }
-        
-        logln("REM released");
-        // Reseteamos el flag
-        REM_DETECTED = false;
-    }
-  }
-}
+//   //     if (MCP23017_readPin(MCP_REM_IO_PIN_PB,I2C_MCP23017_ADDR) == LOW && !REM_DETECTED)
+//   //     {
+//   //       // Informamos del REM detectado
+//   //       hmi.writeString("tape.wavind.txt=\"REM\"");
+//   //       logln("REM detected");
+//   //       // Flag del REM a true
+//   //       REM_DETECTED = true;
+//   //     }
+//   //     else if (MCP23017_readPin(MCP_REM_IO_PIN_PB,I2C_MCP23017_ADDR) != LOW && REM_DETECTED)
+//   //     {
+//   //         // Recuperamos el mensaje original
+//   //         if (WAV_8BIT_MONO)
+//   //         {
+//   //           hmi.writeString("tape.wavind.txt=\"WAV8\"");
+//   //         }
+//   //         else
+//   //         {
+//   //           hmi.writeString("tape.wavind.txt=\"\"");
+//   //         }
+          
+//   //         logln("REM released");
+//   //         // Reseteamos el flag
+//   //         REM_DETECTED = false;
+//   //     }
+//   //   }        
+//   // }
+//   // else
+//   // {
+//           if (REM_ENABLE)
+//           {
+//           //logln("Check if REM is active");
+
+//           if (digitalRead(GPIO_MSX_REMOTE_PAUSE) == LOW && !REM_DETECTED)
+//           {
+//             // Informamos del REM detectado
+//             hmi.writeString("tape.wavind.txt=\"REM\"");
+//             logln("REM detected");
+
+//             // Retardo de arranque de motor
+//             delay(1000/50);
+
+//             // Flag del REM a true
+//             REM_DETECTED = true;
+//           }
+//           else if (digitalRead(GPIO_MSX_REMOTE_PAUSE) != LOW && REM_DETECTED)
+//           {
+//               // Recuperamos el mensaje original
+//               if (WAV_8BIT_MONO)
+//               {
+//                 hmi.writeString("tape.wavind.txt=\"WAV8\"");
+//               }
+//               else
+//               {
+//                 hmi.writeString("tape.wavind.txt=\"\"");
+//               }
+              
+//               logln("REM released");
+//               // Retardo de parada de motor
+//               delay(1000/50);
+
+//               // Reseteamos el flag
+//               REM_DETECTED = false;
+//           }
+//         }
+//   // }
+// }
 
 void tapeControl()
 {
@@ -5178,7 +5326,7 @@ void tapeControl()
         #endif
 
         // Inicializamos la polarizacion
-        EDGE_EAR_IS = POLARIZATION;
+        EDGE_EAR_IS = INVERSETRAIN ? POLARIZATION ^ 1: POLARIZATION; 
 
         // Limpiamos los campos del TAPE
         // porque hemos expulsado la cinta.
@@ -5198,8 +5346,8 @@ void tapeControl()
       }
       else if (SAMPLINGTEST)
       {
-        logln("Testing is output");
-        zxp.samplingtest(14000);
+        logln("Testing is output at 96KHz");
+        zxp.samplingtest(96000);
 
         SAMPLINGTEST = false;
       }
@@ -7994,41 +8142,41 @@ void Task0code(void *pvParameters)
           tScrRfsh = 125;
         }
 
-        if (PWM_POWER_LED)
-        {
-          if ((millis() - startTime4) > 35)
-          {
-            // Timer para el PWM del powerled
-            startTime4 = millis();
+        // if (PWM_POWER_LED)
+        // {
+        //   if ((millis() - startTime4) > 35)
+        //   {
+        //     // Timer para el PWM del powerled
+        //     startTime4 = millis();
 
-            if (!REC)
-            {          
-              if (plduty > POWERLED_DUTY)
-              {
-                chduty=-1;
-              }
-              else if (plduty < 1)
-              {
-                chduty=1;
-              }
-              //
-              plduty += chduty;
-              actuatePowerLed(powerLed,plduty);    
-            }
-          }
-        }
-        else
-        {
+        //     if (!REC)
+        //     {          
+        //       if (plduty > POWERLED_DUTY)
+        //       {
+        //         chduty=-1;
+        //       }
+        //       else if (plduty < 1)
+        //       {
+        //         chduty=1;
+        //       }
+        //       //
+        //       plduty += chduty;
+        //       actuatePowerLed(powerLed,plduty);    
+        //     }
+        //   }
+        // }
+        // else
+        // {
           // Lo dejamos fijo a low power
           if (!REC)
           {
-            actuatePowerLed(true,POWERLED_DUTY);
+            actuatePowerLed(HIGH);
           }
           // else
           // {
           //   //logln("REC mode - Power LED fixed");
           // }
-        }
+        // }
 
         if ((millis() - startTime3) > 500)
         {
@@ -8041,11 +8189,11 @@ void Task0code(void *pvParameters)
             if (!powerLedFixed)
             {
               statusPoweLed = !statusPoweLed;
-              actuatePowerLed(statusPoweLed,255);  
+              actuatePowerLed(statusPoweLed);  
             }
             else if (!IRADIO_EN)
             {
-              actuatePowerLed(true,255);
+              actuatePowerLed(HIGH);
             }
           }
         }
@@ -8212,16 +8360,28 @@ bool createSpecialDirectory(String fDir)
 
 void setupAudioKit()
 {
+  // SDA, SCL
+  // Wire.begin(33,32);            // default: 21, 22 - Audio board codec I2C
+  // Wire1.begin(32,30);       // Extension board
+  // // Wire1.setTimeOut(3000);  // 3 seconds timeout
+  // logln("---------- Scanning Wire -------------");
+  // I2C_ScannerWire();
+  // logln("---------- Scanning Wire1 ------------");
+  // I2C_ScannerWire1();  
+
     hmi.writeString("statusLCD.txt=\"Setting audio board\"");
     //
     // slot SD
     powadcr_pins.addSPI(ESP32PinsSD);
     // add i2c codec pins: scl, sda, port, frequency
-    powadcr_pins.addI2C(PinFunction::CODEC, 32, 33);
+    powadcr_pins.addI2C(PinFunction::CODEC,32,33);
+    //powadcr_pins.addI2C(PinFunction::CODEC,32,33,1,100000U, &Wire1,true); // Audio board codec
+    //powadcr_pins.addI2C(PinFunction::EXPANDER, 18, 23,1,100000U, Wire1,true); // Extension board codec
+
     // add i2s pins: mclk, bck, ws,data_out, data_in ,(port)
     powadcr_pins.addI2S(PinFunction::CODEC, 0, 27, 25, 26, 35);
     // add other pins: PA on gpio 21
-    powadcr_pins.addPin(PinFunction::PA, 21, PinLogic::Output);
+    //powadcr_pins.addPin(PinFunction::PA, 21, PinLogic::Output);
 
     // Teclas
     //powadcr_pins.addPin(PinFunction::KEY, 36, PinLogic::InputActiveLow, 1);
@@ -8235,7 +8395,7 @@ void setupAudioKit()
     // Amplificador ENABLE pin
     powadcr_pins.addPin(PinFunction::PA, 21, PinLogic::Output);
     // Power led indicador
-    powadcr_pins.addPin(PinFunction::LED, 22, PinLogic::Output);
+    //powadcr_pins.addPin(PinFunction::LED, 22, PinLogic::Output);
 
     //
     auto cfg = kitStream.defaultConfig(RXTX_MODE);
@@ -8254,11 +8414,48 @@ void setupAudioKit()
     // Ajustamos el volumen de entrada
     kitStream.setInputVolume(IN_REC_VOL);
 
-    // Para que esta linea haga efecto debe estar el define 
+    // Para que esta linea haga efecto debe estar el define = true
     //
     #if USE_AUDIO_LOGGING
-      //AudioToolsLogger.begin(Serial, AudioToolsLogLevel::Debug);
+      AudioToolsLogger.begin(Serial, AudioToolsLogLevel::Debug);
     #endif    
+}
+
+void setupMCP23017()
+{
+    #ifdef I2C_MCP23017_AVAILABLE
+    
+      if (!Wire1.begin(18,23,1700000U))
+      {
+          logln("Error I2C.");
+          MCP23017_AVAILABLE = false;
+      }
+      else
+      {
+          logln("MCP23017 OK.");
+
+          MCP23017_AVAILABLE = true;
+          // Puerto A
+          Wire1.beginTransmission(I2C_MCP23017_ADDR);     
+          Wire1.write(0x00);  // Reg. IODIRA
+          Wire1.write(0x00);  // Configuramos todo el puerto A como salida
+          Wire1.endTransmission();      
+          // Puerto B
+          Wire1.beginTransmission(I2C_MCP23017_ADDR);
+          Wire1.write(0x01); 
+          Wire1.write(000000001); // Configuramos GPIO0B como entrada
+          Wire1.endTransmission();
+          //
+          // test with powerLed
+          for (int i=0;i<10;i++)
+          {
+            MCP23017_writePin(MCP_LED_IO_PIN_PA,LOW,I2C_MCP23017_ADDR);      
+            delay(80);
+            MCP23017_writePin(MCP_LED_IO_PIN_PA,HIGH,I2C_MCP23017_ADDR);
+            delay(80);
+          }
+      }
+    #endif  
 }
 
 void setupWifi()
@@ -8457,7 +8654,7 @@ void loadHMICfgfromNVS()
     // MUTE_AMPLIFIER
     showOption("menuAudio.mutAmp.val",String(!ACTIVE_AMP));
     // POWERLED_DUTY
-    showOption("menu.ppled.val",String(PWM_POWER_LED));
+    showOption("menu.ppled.val",String(ENABLE_POWER_LED));
     // First view files on sorting
     showOption("menu.sortFil.val",String(!SORT_FILES_FIRST_DIR));
 
@@ -8517,9 +8714,44 @@ void loadHMICfgfromNVS()
     delay(500);  
 }
 
+void I2C_ScannerWire()
+{
+  byte error, address;
+  int nDevices;
+
+  logln("Scanning...");
+
+  nDevices = 0;
+  for(address = 1; address < 127; address++ )
+  {
+    Wire1.beginTransmission(address);
+    error = Wire1.endTransmission();
+
+    if (error == 0)
+    {
+      logln("I2C device found at address 0x" + String(address, HEX));
+      if (address<16)
+        logln("0");
+      logln(String(address,HEX));
+      logln("  !");
+      nDevices++;
+    }
+    else if (error==4)
+    {
+      logln("Unknown error at address 0x");
+      if (address<16)
+        logln("0");
+      logln(String(address,HEX));
+    }    
+  }
+  if (nDevices == 0)
+    logln("No I2C devices found\n");
+  else
+    logln("done\n");
+}
+
 void setup()
 {
-
 
   // Inicializar puerto USB Serial a 115200 para depurar / subida de firm
   Serial.begin(115200);
@@ -8543,7 +8775,6 @@ void setup()
   hmi.writeString("statusLCD.txt=\"POWADCR " + String(VERSION) + "\"");
   delay(1250);
 
-
   // -------------------------------------------------------------------------
   //
   // Inicializamos el soporte de audio
@@ -8551,16 +8782,28 @@ void setup()
   // -------------------------------------------------------------------------
   setupAudioKit();
 
+  // -------------------------------------------------------------------------
+  //
+  // Configuracion I2C - MCP23017
+  //
+  // -------------------------------------------------------------------------
+  setupMCP23017();
+
   // Arrancamos el indicador de power
-  actuatePowerLed(true,POWERLED_DUTY);
+  actuatePowerLed(HIGH);
   
   // -------------------------------------------------------------------
   // Configuramos el pin de Remote Pause si está habilitado
   // -------------------------------------------------------------------
   #ifdef MSX_REMOTE_PAUSE
-    hmi.writeString("statusLCD.txt=\"Setting Remote Pause\"");
+
+  hmi.writeString("statusLCD.txt=\"Setting Remote Pause\"");
+
+  // if (!MCP23017_AVAILABLE)
+  // {
     delay(1250);
     pinMode(GPIO_MSX_REMOTE_PAUSE, INPUT_PULLUP);
+  // }
   #endif
 
   // -------------------------------------------------------------------------

@@ -334,98 +334,6 @@ class TAPprocessor
             return (char*)(header+2);             
         }
   
-        // int getNumBlocks(File32 mFile, int sizeTAP)
-        // {
-
-        //     int startBlock = 0;
-        //     int lastStartBlock = 0;
-        //     int sizeB = 0;
-        //     int newSizeB = 0;
-        //     int chk = 0;
-        //     int blockChk = 0;
-        //     int numBlocks = 0;
-
-        //     FILE_CORRUPTED = false;
-            
-        //     bool reachEndByte = false;
-
-        //     int state = 0;    
-
-        //     uint8_t* ptr;
-        //     uint8_t* ptr1;
-        //     uint8_t* ptr2;
-
-        //     //Entonces recorremos el TAP. 
-        //     // La primera cabecera SIEMPRE debe darse.
-        //     // //SerialHW.println("");
-        //     // //SerialHW.println("Analyzing TAP file. Please wait ...");
-            
-        //     // //SerialHW.println("");
-        //     // //SerialHW.println("SIZE TAP: " + String(sizeTAP));
-
-        //     // Los dos primeros bytes son el tamaño a contar
-        //     ptr1 = sdm.readFileRange32(_mFile,startBlock+1,1,false);
-        //     ptr2 = sdm.readFileRange32(_mFile,startBlock,1,false);
-        //     sizeB = (256*ptr1[0]) + ptr2[0];
-        //     free(ptr1);
-        //     free(ptr2);            
-        //     startBlock = 2;
-
-        //     while(reachEndByte==false)
-        //     {
-
-        //         ptr = sdm.readFileRange32(_mFile,startBlock,sizeB-1,false);
-        //         chk = calculateChecksum(ptr,0,sizeB-1);
-        //         free(ptr);    
-
-        //         ptr = sdm.readFileRange32(_mFile,startBlock+sizeB-1,1,false);
-        //         blockChk = ptr[0];
-        //         free(ptr);
-
-        //         if (blockChk == chk)
-        //         {                                  
-        //             // Siguiente bloque
-        //             // Direcion de inicio (offset)
-        //             startBlock = startBlock + sizeB;
-        //             // Tamaño
-        //             ptr1 = sdm.readFileRange32(_mFile,startBlock+1,1,false);
-        //             ptr2 = sdm.readFileRange32(_mFile,startBlock,1,false);
-        //             newSizeB = (256*ptr1[0]) + ptr2[0];
-        //             free(ptr1);
-        //             free(ptr2);
-
-        //             numBlocks++;
-        //             sizeB = newSizeB;
-        //             startBlock = startBlock + 2;
-
-        //             // //SerialHW.println("");
-        //             // //SerialHW.print("OFFSET: 0x");
-        //             // //SerialHW.print(startBlock,HEX);
-        //             // //SerialHW.print(" / SIZE:   " + String(newSizeB));
-        //         }
-        //         else
-        //         {
-        //             reachEndByte = true;
-        //             // //SerialHW.println("Error in checksum. Block --> " + String(numBlocks) + " - offset: " + String(lastStartBlock));
-
-        //             // Abortamos
-        //             FILE_CORRUPTED = true;
-        //         }
-
-        //         // ¿Hemos llegado al ultimo uint8_t
-        //         if (startBlock > sizeTAP)                
-        //         {
-        //             reachEndByte = true;
-        //             //break;
-        //             // //SerialHW.println("");
-        //             // //SerialHW.println("Success. End: ");
-        //         }
-
-        //     }
-
-        //     return numBlocks;
-        // }
-
         bool getInformationOfHead(tTAPBlockDescriptor &tB, int flagByte, int typeBlock, int startBlock, int sizeB, char (&nameTAP)[11])
         {
         
@@ -780,17 +688,17 @@ class TAPprocessor
                     strType=&STRTYPEDEF[0];
                 }
 
-                if (_myTAP.descriptor[n].nameDetected)
-                {
-                    // //SerialHW.println("");
-                    //// //SerialHW.print("[" + String(n) + "]" + " - Name: " + (String(bDscr[n].name)).substring(0,10) + " - (" + strType + ")");
-                    // //SerialHW.print("[" + String(n) + "]" + " - Name: " + _myTAP.descriptor[n].name + " - (" + strType + ")");
-                }
-                else
-                { 
-                    // //SerialHW.println("");
-                    // //SerialHW.print("[" + String(n) + "] - " + strType + " ");
-                }
+                // if (_myTAP.descriptor[n].nameDetected)
+                // {
+                //     // //SerialHW.println("");
+                //     //// //SerialHW.print("[" + String(n) + "]" + " - Name: " + (String(bDscr[n].name)).substring(0,10) + " - (" + strType + ")");
+                //     // //SerialHW.print("[" + String(n) + "]" + " - Name: " + _myTAP.descriptor[n].name + " - (" + strType + ")");
+                // }
+                // else
+                // { 
+                //     // //SerialHW.println("");
+                //     // //SerialHW.print("[" + String(n) + "] - " + strType + " ");
+                // }
 
                 // //SerialHW.println("");
                 // //SerialHW.println("");
@@ -798,33 +706,6 @@ class TAPprocessor
             }      
         }
 
-        // int getTotalHeaders(uint8_t* fileTAP, int sizeTAP)
-        // {
-        //     // Este procedimiento devuelve el total de bloques que contiene el fichero
-        //     int nblocks = 0;
-        //     //uint8_t* bBlock = new uint8_t[sizeTAP];
-        //     uint8_t* bBlock = (uint8_t*)(malloc(sizeTAP * sizeof(uint8_t)));
-            
-        //     bBlock = fileTAP; 
-        //     // Para ello buscamos la secuencia "0x13 0x00 0x00"
-        //     for (int n=0;n<sizeTAP;n++)
-        //     {
-        //         if (bBlock[n] == 19)
-        //         {
-        //             if ((n+1 < sizeTAP) && (bBlock[n+1] == 0))
-        //             {
-        //                 if ((n+2 < sizeTAP) && (bBlock[n+2] == 0))
-        //                 {
-        //                     nblocks++;
-        //                     n = n + 3;
-        //                 }
-        //             }
-        //         }
-        //     }
-            
-        //     free(bBlock);
-        //     return nblocks;
-        // }
 
     public:
     
@@ -917,38 +798,12 @@ class TAPprocessor
             }        
         }
 
-        // void deallocatingTAP()
-        // {
-        //     _//hmi.getMemFree();
-        //     _hmi.updateMem();
-
-        //     log("Deallocating TAP");
-        //     log("--------------------------------------");
-        //     // //SerialHW.printf("Direccion de la copia %p", _myTAP.descriptor);
-            
-        //     free(_myTAP.descriptor);
-            
-        //     _//hmi.getMemFree();
-        //     _hmi.updateMem();
-        // }
-        
-        // void set_SdFat32(SdFat32 sdf32)
-        // {
-        //     _sdf32 = sdf32;
-        // }
-
         void set_file(File tapFileName, int sizeTAP)
         {
             // Pasamos los parametros a la clase
             _mFile = tapFileName;
             _sizeTAP = sizeTAP;
         }
-
-        // void set_SDM(SDmanager sdmTmp)
-        // {
-        //     //_sdm = sdmTmp;
-        //     //ptrSdm = &sdmTmp;
-        // }
 
         void set_HMI(HMI hmi)
         {
@@ -1269,6 +1124,7 @@ class TAPprocessor
                     for (int i = m; i < _myTAP.numBlocks; i++) 
                     {
                         BLOCK_PLAYED = false;
+                        KEEP_CURRENT_EDGE = false;
         
                         // Obtenemos el nombre del bloque
                         strncpy(LAST_NAME,_myTAP.descriptor[i].name,sizeof(_myTAP.descriptor[i].name));

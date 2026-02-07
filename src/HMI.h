@@ -1611,11 +1611,11 @@ class HMI
           //
           if (valEn==1)
           {
-            PWM_POWER_LED = true;
+            ENABLE_POWER_LED = true;
           }
           else
           {
-            PWM_POWER_LED = false;
+            ENABLE_POWER_LED = false;
           }
 
           saveHMIcfg("PLEopt");
@@ -2970,26 +2970,26 @@ class HMI
         // Habilitar terminadores para forzar siguiente pulso a HIGH
         else if (strCmd.indexOf("TER=") != -1) 
         {
-          //Cogemos el valor
-          uint8_t buff[8];
-          strCmd.getBytes(buff, 7);
-          int valEn = (int)buff[4];
-          //
-          if (valEn==1)
-          {
-              // Habilita terminadores
-              APPLY_END = true;
-          }
-          else
-          {
-              // Deshabilita terminadores
-              APPLY_END = false;
-          }
+          // //Cogemos el valor
+          // uint8_t buff[8];
+          // strCmd.getBytes(buff, 7);
+          // int valEn = (int)buff[4];
+          // //
+          // if (valEn==1)
+          // {
+          //     // Habilita terminadores
+          //     APPLY_END = true;
+          // }
+          // else
+          // {
+          //     // Deshabilita terminadores
+          //     APPLY_END = false;
+          // }
 
-          // #ifdef DEBUGMODE
-            //logln("");
-            logln("Terminadores ENABLE =" + String(APPLY_END));
-          // #endif
+          // // #ifdef DEBUGMODE
+          //   //logln("");
+          //   logln("Terminadores ENABLE =" + String(APPLY_END));
+          // // #endif
         }
         // Polarización de la señal
         else if (strCmd.indexOf("PLZ=") != -1) 
@@ -3000,23 +3000,23 @@ class HMI
           int valEn = (int)buff[4];
           //
           INVERSETRAIN = valEn;
-          // if (valEn==0)
-          // {
-          //     // Empieza en DOWN
-          //     POLARIZATION = up;
-          //     EDGE_EAR_IS = up;
-          //     //INVERSETRAIN = false;
-          // }
-          // else
-          // {
-          //     // Empieza en UP
-          //     POLARIZATION = down;
-          //     EDGE_EAR_IS = down;
-          //     //INVERSETRAIN = true;
-          // }
+          if (valEn==0)
+          {
+              // Empieza en DOWN
+              POLARIZATION = up;
+              EDGE_EAR_IS = up;
+              //INVERSETRAIN = false;
+          }
+          else
+          {
+              // Empieza en UP
+              POLARIZATION = down;
+              EDGE_EAR_IS = down;
+              //INVERSETRAIN = true;
+          }
 
-          //logln("");
-          //logln("Polarization =" + String(INVERSETRAIN));
+          logln("");
+          logln("Polarization =" + String(INVERSETRAIN));
 
         }
         // Nivel LOW a cero
@@ -3231,7 +3231,7 @@ class HMI
             // Ahora escribimos la configuracion
             cfg.println("<freq>"+ String(SAMPLING_RATE) +"</freq>");        
             cfg.println("<zerolevel>" + String(ZEROLEVEL) + "</zerolevel>");
-            cfg.println("<blockend>" + String(APPLY_END) + "</blockend>");   
+            //cfg.println("<blockend>" + String(APPLY_END) + "</blockend>");   
 
             if (INVERSETRAIN)
             {
@@ -3816,7 +3816,7 @@ class HMI
             #endif
             CURRENT_PAGE = 5;
             delay(500);          
-            myNex.writeNum("menu2.ppled.val", int(PWM_POWER_LED));
+            //myNex.writeNum("menu2.ppled.val", int(PWM_POWER_LED));
             myNex.writeNum("menu2.sortFil.val", int(SORT_FILES_FIRST_DIR));          
         }         
         else if (strCmd.indexOf("PTAPE") != -1)

@@ -103,11 +103,20 @@
 #define LOG_LEVEL                                       AudioLogger::Info
 // Definicion del puerto serie para la pantalla
 #define SerialHWDataBits                                921600
-#define hmiTxD                                          23
-#define hmiRxD                                          18
-#define powerLed                                        22
-#define GPIO_MSX_REMOTE_PAUSE                           19
+#define hmiTxD                                          5 //23
+#define hmiRxD                                          22
+// Definicion si MCP23017 no esta disponible
+#define powerLed                                        18 //22
+#define GPIO_MSX_REMOTE_PAUSE                           19 //19
+
 #define WDT_TIMEOUT                                     360000
+
+// I2C
+#define I2C_MCP23017_AVAILABLE                          
+#define I2C_MCP23017_ADDR                               0x20  //0x20
+#define I2C_GRP_LCD_ADDR                                0x27  //0x27
+#define MCP_REM_IO_PIN_PB                               8     // Pin del MCP23017 para Remote Pause
+#define MCP_LED_IO_PIN_PA                               1     // Pin del MCP23017 para Power LED
 
 // --------------------------------------------------------------
 // Configuración de memoria para SSL
@@ -181,14 +190,19 @@
 
 // Sampling rate TAP/TZX/..
 #define DEFAULT_MP3_SAMPLING_RATE                     44100
-#define STANDARD_SR_8_BIT_MACHINE                     44304   //32407    //43750   // Sampling rate adecuado para maquinas de 8 bitsAjuste AZIMUT (Hz) - 22200 Hz
+#define STANDARD_SR_8_BIT_MACHINE                     96000.0 //44304   //32407    //43750   // Sampling rate adecuado para maquinas de 8 bitsAjuste AZIMUT (Hz) - 22200 Hz
 #define STANDARD_SR_8_BIT_MACHINE_TAP                 31250   // Sampling rate adecuado para maquinas de 8 bitsAjuste AZIMUT (Hz) - 22200 Hz
 #define PAUSE_TAIL_SAMPLES                            (0.002 / STANDARD_SR_8_BIT_MACHINE)
+#define PAUSE_TAIL_TSTATES                            3500 * 1000   //Minimo debe ser 1S (3500000 TStates)
+#define APPLY_ACCU_ERROR_ON_SILENCE                   false
+
 //#define STANDARD_SR_8_BIT_MACHINE                     31250   // Sampling rate adecuado para maquinas de 8 bitsAjuste AZIMUT (Hz) - 22200 Hz
 
 // Sampling rate para WAV y REC WAV (pero ojo, no para PLAY TO WAV)
 #define DEFAULT_WAV_SAMPLING_RATE                     44100
 #define DEFAULT_WAV_SAMPLING_RATE_REC                 44100
+// #define DEFAULT_WAV_SAMPLING_RATE_REC_TO_TAP          44100
+// #define DEFAULT_WAV_SAMPLING_RATE_REC_PLAY_TO_WAV     44100
 #define DEFAULT_8BIT_WAV_SAMPLING_RATE_REC            22050
 
 // Porcentaje de avance rapido
@@ -247,12 +261,12 @@
 // Poner 1 --> SI SE ESTÁ USANDO 22200 Hz 
 // Poner 0 --> Si se usa 32150 para recording
 #define USE_ZX_SPECTRUM_SR                            0 
-#define STANDARD_SR_REC_ZX_SPECTRUM                   32800   // Sampling rate adecuado para ZX Spectrum (recorder) - Ajuste AZIMUT (Hz) - 22200 Hz
-
+//#define STANDARD_SR_REC_ZX_SPECTRUM                 32800   // Sampling rate adecuado para ZX Spectrum (recorder) - Ajuste AZIMUT (Hz) - 22200 Hz
+#define STANDARD_SR_REC_ZX_SPECTRUM                   87500   // Sampling rate adecuado para ZX Spectrum (recorder) - Ajuste AZIMUT (Hz) - 22200 Hz
 //
 // ----------------------------------------------------------------------------------------------
 // Particion mas pequeña de un silencio
-#define MIN_FRAME_FOR_SILENCE_PULSE_GENERATION        256
+#define MIN_FRAME_FOR_SILENCE_PULSE_GENERATION        1024
 
 // --------------------------------------------------------------
 // TAP config.
