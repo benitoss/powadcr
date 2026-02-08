@@ -4542,15 +4542,11 @@ void freeMemoryFromDescriptorPZX(tPZXBlockDescriptor *descriptor)
   {
     if (strcmp(descriptor[n].tag, "PULS") == 0)
     {
-      // ✅ CORRECCIÓN: El nombre correcto es 'pulses_data'
-      if (descriptor[n].data_s0_pulses != nullptr) {
-        free(descriptor[n].data_s0_pulses);
-        descriptor[n].data_s0_pulses = nullptr;
+      // PULS usa timming.pzx_pulse_data (asignado en analyzePULS)
+      if (descriptor[n].timming.pzx_pulse_data != nullptr) {
+        free(descriptor[n].timming.pzx_pulse_data);
+        descriptor[n].timming.pzx_pulse_data = nullptr;
       }
-      if (descriptor[n].data_s1_pulses != nullptr) {
-        free(descriptor[n].data_s1_pulses);
-        descriptor[n].data_s1_pulses = nullptr;
-      }      
     }
     else if (strcmp(descriptor[n].tag, "DATA") == 0)
     {
@@ -5021,7 +5017,7 @@ void setFWIND()
     // Para el fichero PZX
     if (BLOCK_SELECTED > (TOTAL_BLOCKS - 1))
     {
-        BLOCK_SELECTED = 0;
+        BLOCK_SELECTED = 1;
     }
   }
   else if (TYPE_FILE_LOAD == "TAP")
@@ -5033,6 +5029,8 @@ void setFWIND()
     }
   }
   
+  logln("TOTAL_BLOCKS: " + String(TOTAL_BLOCKS));
+  logln("BLOCK_SELECTED: " + String(BLOCK_SELECTED));
 
   if (TYPE_FILE_LOAD != "TAP" && TYPE_FILE_LOAD != "PZX")
   {
@@ -5044,7 +5042,7 @@ void setFWIND()
                                 myTZX.descriptor[BLOCK_SELECTED].size,
                                 myTZX.descriptor[BLOCK_SELECTED].playeable);
   }
-  else if (TYPE_FILE_LOAD != "PZX")
+  else if (TYPE_FILE_LOAD == "PZX")
   {
     // Forzamos un refresco de los indicadores
     hmi.setBasicFileInformation(0, 0, myPZX.descriptor[BLOCK_SELECTED].name,
@@ -5110,7 +5108,7 @@ void setRWIND()
   else if (TYPE_FILE_LOAD == "PZX")
   {
     // Para el fichero PZX
-    if (BLOCK_SELECTED < 0)
+    if (BLOCK_SELECTED < 1)
     {
       BLOCK_SELECTED = (TOTAL_BLOCKS - 1);
     }
@@ -5126,7 +5124,7 @@ void setRWIND()
                                 myTZX.descriptor[BLOCK_SELECTED].size,
                                 myTZX.descriptor[BLOCK_SELECTED].playeable);
   }
-  else if (TYPE_FILE_LOAD != "PZX")
+  else if (TYPE_FILE_LOAD == "PZX")
   {
     // Forzamos un refresco de los indicadores
     hmi.setBasicFileInformation(0, 0, myPZX.descriptor[BLOCK_SELECTED].name,

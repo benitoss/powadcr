@@ -561,7 +561,7 @@ public:
             currentOffset += 8 + blockSize;
         }
         
-        TOTAL_BLOCKS = blockCount;
+        TOTAL_BLOCKS = blockCount+1;
         logln("Total PZX Data Blocks Found: " + String(blockCount));
 
         if (blockCount == 0) {

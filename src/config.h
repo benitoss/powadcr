@@ -103,16 +103,17 @@
 #define LOG_LEVEL                                       AudioLogger::Info
 // Definicion del puerto serie para la pantalla
 #define SerialHWDataBits                                921600
-#define hmiTxD                                          5 //23
-#define hmiRxD                                          22
+#define hmiTxD                                          5   // Sin eGPIO es 23
+#define hmiRxD                                          22  // Sin eGPIO es 18
 // Definicion si MCP23017 no esta disponible
-#define powerLed                                        18 //22
-#define GPIO_MSX_REMOTE_PAUSE                           19 //19
+#define powerLed                                        18  // Sin eGPIO es 22
+#define GPIO_MSX_REMOTE_PAUSE                           19  // Sin eGPIO es 19
 
 #define WDT_TIMEOUT                                     360000
 
 // I2C
-#define I2C_MCP23017_AVAILABLE                          
+// MCP23017
+#define I2C_MCP23017_AVAILABLE                          // Comentar si no se usa el MCP23017                          
 #define I2C_MCP23017_ADDR                               0x20  //0x20
 #define I2C_GRP_LCD_ADDR                                0x27  //0x27
 #define MCP_REM_IO_PIN_PB                               8     // Pin del MCP23017 para Remote Pause

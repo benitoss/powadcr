@@ -4688,13 +4688,15 @@ class HMI
               int max = MAX_BLOCKS_IN_BROWSER;
               int totalPages = 0;
       
-              if (TOTAL_BLOCKS > max)
+              // TOTAL_BLOCKS incluye +1, así que el número real de bloques es TOTAL_BLOCKS - 1
+              int realBlockCount = TOTAL_BLOCKS > 0 ? TOTAL_BLOCKS - 1 : 0;
+              if (realBlockCount > max)
               {
                 max = MAX_BLOCKS_IN_BROWSER;
               }
               else
               {
-                max = TOTAL_BLOCKS > 0 ? TOTAL_BLOCKS : 0;
+                max = realBlockCount;
               }
       
               BB_PAGE_SELECTED = (BB_PTR_ITEM / MAX_BLOCKS_IN_BROWSER) + 1;
@@ -4712,7 +4714,7 @@ class HMI
                 // ✅ LÓGICA DE INDEXACIÓN UNIFICADA Y SEGURA
                 int real_idx = (i - 1) + BB_PTR_ITEM;
       
-                if (real_idx >= TOTAL_BLOCKS)
+                if (real_idx >= TOTAL_BLOCKS - 1)
                 {
                   // Si el índice está fuera de rango, limpiamos la línea
                   myNex.writeStr("blocks.id" + String(i) + ".txt","");
@@ -4727,25 +4729,25 @@ class HMI
                 else
                 {
                   // Si el índice es seguro, rellenamos la información
-                  if (TYPE_FILE_LOAD != "PZX")
-                  {
-                    myNex.writeStr("blocks.id" + String(i) + ".txt",String(real_idx));
-                  }
-                  else
-                  {
-                    myNex.writeStr("blocks.id" + String(i) + ".txt",String(real_idx + 1));
-                  }
+                  // if (TYPE_FILE_LOAD != "PZX")
+                  // {
+                  //   myNex.writeStr("blocks.id" + String(i) + ".txt",String(real_idx+1));
+                  // }
+                  // else
+                  // {
+                  myNex.writeStr("blocks.id" + String(i) + ".txt",String(real_idx + 1));
+                  // }
                   delay(pa);
       
                   if (TYPE_FILE_LOAD == "TZX" || TYPE_FILE_LOAD == "CDT" || TYPE_FILE_LOAD == "TSX")
                   {
                       // ... (lógica TZX usando real_idx)
                       // Colores, etc.
-                      myNex.writeStr("blocks.data" + String(i) + ".txt",myTZX.descriptor[real_idx].typeName);
+                      myNex.writeStr("blocks.data" + String(i) + ".txt",myTZX.descriptor[real_idx + 1].typeName);
                       delay(pa);
-                      myNex.writeStr("blocks.name" + String(i) + ".txt",myTZX.descriptor[real_idx].name);
+                      myNex.writeStr("blocks.name" + String(i) + ".txt",myTZX.descriptor[real_idx + 1].name);
                       delay(pa);
-                      myNex.writeStr("blocks.size" + String(i) + ".txt",String(myTZX.descriptor[real_idx].size));
+                      myNex.writeStr("blocks.size" + String(i) + ".txt",String(myTZX.descriptor[real_idx + 1].size));
                       delay(pa);
                   }
                   else if (TYPE_FILE_LOAD == "PZX")
@@ -4765,7 +4767,7 @@ class HMI
                   {
                     // ✅ LÓGICA TAP CORREGIDA USANDO real_idx
                     myNex.writeStr("blocks.data" + String(i) + ".txt",myTAP.descriptor[real_idx].typeName);
-                    delay(pa);
+                    delay(pa);  
                     myNex.writeStr("blocks.name" + String(i) + ".txt",myTAP.descriptor[real_idx].name);
                     delay(pa);
                     myNex.writeStr("blocks.size" + String(i) + ".txt",String(myTAP.descriptor[real_idx].size));
