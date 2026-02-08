@@ -1,13 +1,14 @@
 /* +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     Nombre: globales.h
-    
+
     Creado por:
-      Copyright (c) Antonio Tamairón. 2023  / https://github.com/hash6iron/powadcr
+      Copyright (c) Antonio Tamairón. 2023  /
+ https://github.com/hash6iron/powadcr
       @hash6iron / https://powagames.itch.io/
-    
+
     Descripción:
     Fichero de variables, estructuras globales
-   
+
     Version: 1.0
 
     Historico de versiones
@@ -19,29 +20,30 @@
     it under the terms of the GNU General Public License as published by
     the Free Software Foundation, either version 3 of the License, or
     (at your option) any later version.
-    
+
     This program is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
-    
+
     To Contact the dev team you can write to hash6iron@gmail.com
  +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++*/
+#pragma once
 
- #include "nvs.h"
- #include "nvs_flash.h"
- #include <stdio.h>
- #include <inttypes.h>
- #include <string>
+#include "nvs.h"
+#include "nvs_flash.h"
+#include <inttypes.h>
+#include <stdio.h>
+#include <string>
 
- #define  up   1
- #define  down 0
- 
+#define up 1
+#define down 0
+
 File global_dir;
-//File global_file; 
+// File global_file;
 
 int stackFreeCore0 = 0;
 int stackFreeCore1 = 0;
@@ -58,20 +60,21 @@ int SD_SPEED_MHZ = 4;
 // ******************************************************************************
 // POLARIZACIÓN POR DEFECTO: HIGH (1) para compatibilidad con TAPIR
 // ******************************************************************************
-// TAPIR (emulador de referencia) genera señales con polaridad INVERSA por defecto
-// Esto significa que el nivel inicial es HIGH, y el primer pulso baja a LOW.
-// Para compatibilidad con TZX generados por TAPIR (como BC's Quest for Tires),
-// powaDCR debe usar la misma polaridad por defecto.
-// 
+// TAPIR (emulador de referencia) genera señales con polaridad INVERSA por
+// defecto Esto significa que el nivel inicial es HIGH, y el primer pulso baja a
+// LOW. Para compatibilidad con TZX generados por TAPIR (como BC's Quest for
+// Tires), powaDCR debe usar la misma polaridad por defecto.
+//
 // POLARIZATION: 0 = LOW inicial (normal), 1 = HIGH inicial (inversa/TAPIR)
 // ******************************************************************************
-// Empezamos así porque ahora lo primero es aplicar el edge antes del pulso a generar y no al final para el siguiente.
-// entonces hay que empezar en HIGH para que el primer pulso baje a LOW. Si empezamos en LOW, el primer pulso sube a HIGH 
-// y eso no es compatible con el estandar TZX.
-uint8_t POLARIZATION = 1;                   
+// Empezamos así porque ahora lo primero es aplicar el edge antes del pulso a
+// generar y no al final para el siguiente. entonces hay que empezar en HIGH
+// para que el primer pulso baje a LOW. Si empezamos en LOW, el primer pulso
+// sube a HIGH y eso no es compatible con el estandar TZX.
+uint8_t POLARIZATION = 1;
 uint8_t EDGE_EAR_IS = POLARIZATION;
 bool CHANGE_PZX_LEVEL = false;
-bool FORZE_LEVEL = false; // Forzar nivel inicial en bloques PZX
+bool FORZE_LEVEL = false;       // Forzar nivel inicial en bloques PZX
 bool KEEP_CURRENT_EDGE = false; // Mantener el nivel actual sin cambios
 int LAST_PULSE_WIDTH = 0;
 
@@ -93,20 +96,19 @@ enum ConfigType {
 };
 
 struct ConfigEntry {
-  const char* key;
+  const char *key;
   ConfigType type;
-  void* value;  // Pointer to the configuration value
+  void *value; // Pointer to the configuration value
 };
 
-struct tRlePulse
-{
-    uint32_t pulse_len; // Longitud del pulso en T-States (puede ser hasta 31 bits en PZX)
-    uint16_t repeat;    // Número de repeticiones (será 1 para pulsos normales)
+struct tRlePulse {
+  uint32_t pulse_len; // Longitud del pulso en T-States (puede ser hasta 31 bits
+                      // en PZX)
+  uint16_t repeat;    // Número de repeticiones (será 1 para pulsos normales)
 };
 
 // Estructura de un bloque
-struct tTimming
-{
+struct tTimming {
   int bit_0 = 855;
   int bit_1 = 1710;
   int pilot_len = 2168;
@@ -116,75 +118,71 @@ struct tTimming
   int pure_tone_len = 0;
   int pure_tone_num_pulses = 0;
   int pulse_seq_num_pulses = 0;
-  int* pulse_seq_array=nullptr;
+  int *pulse_seq_array = nullptr;
   int bitcfg = 0;
   int bytecfg = 0;
   int csw_sampling_rate;
   int csw_compression_type;
-  int csw_num_pulses;         // ✅ AÑADIR: Número de pulsos en la secuencia RLE
-  tRlePulse* csw_pulse_data;  // ✅ AÑADIR: Puntero a la secuencia de pulsos RLE  
+  int csw_num_pulses;        // ✅ AÑADIR: Número de pulsos en la secuencia RLE
+  tRlePulse *csw_pulse_data; // ✅ AÑADIR: Puntero a la secuencia de pulsos RLE
 
   // PARA PZX
-  int pzx_num_pulses;         // Número de pulsos en un bloque PULS
-  tRlePulse* pzx_pulse_data;  // Puntero a la secuencia de pulsos (reutilizamos tRlePulse)
-
+  int pzx_num_pulses;        // Número de pulsos en un bloque PULS
+  tRlePulse *pzx_pulse_data; // Puntero a la secuencia de pulsos (reutilizamos
+                             // tRlePulse)
 };
 
-struct tSymDef
-{
+struct tSymDef {
   // Definición de pulsos
   int symbolFlag = 0;
-  int* pulse_array=nullptr;
+  int *pulse_array = nullptr;
 };
 
-struct tPrle
-{
+struct tPrle {
   // Tipo para el array de pilot/sync y repetición
   int symbol = 0;
   int repeat = 0;
 };
 
-struct tSymbol
-{
+struct tSymbol {
   // Definición de un bloque 0x19
-  int TOTP = 0;                         // Total numero de simbols para pilot/sync
-  int NPP = 0;                          // Maximo numero de pulsos por pilot/sync simbolo
-  int ASP = 0;                          // Numero de simbolos para pilot/sync en la Alphabet table (0 = 256)
-  int TOTD = 0;                         // Total numero de simbols en el data stream
-  int NPD = 0;                          // Maximo numero de pulsos por data simbolo
-  int ASD = 0;                          // Numero de simbolos para data en la Alphabet table (0 = 256)
-  tSymDef* symDefPilot = nullptr;       // Pilot and Sync definition table
-  tSymDef* symDefData = nullptr;        // Data definition table
-  tPrle* pilotStream = nullptr;         // Pilot and sync data stream
+  int TOTP = 0; // Total numero de simbols para pilot/sync
+  int NPP = 0;  // Maximo numero de pulsos por pilot/sync simbolo
+  int ASP =
+      0; // Numero de simbolos para pilot/sync en la Alphabet table (0 = 256)
+  int TOTD = 0; // Total numero de simbols en el data stream
+  int NPD = 0;  // Maximo numero de pulsos por data simbolo
+  int ASD = 0;  // Numero de simbolos para data en la Alphabet table (0 = 256)
+  tSymDef *symDefPilot = nullptr; // Pilot and Sync definition table
+  tSymDef *symDefData = nullptr;  // Data definition table
+  tPrle *pilotStream = nullptr;   // Pilot and sync data stream
   int offsetDataStream = 0;
   int offsetPilotDataStream = 0;
-  uint8_t* dataStream = nullptr;            // Data stream
+  uint8_t *dataStream = nullptr; // Data stream
 };
 
 // Estructura del descriptor de bloques
-struct tTAPBlockDescriptor 
-{
-    bool corrupted = false;
-    int offset = 0;
-    int size = 0;
-    int chk = 0;
-    char name[11];
-    bool nameDetected = false;
-    bool header = false;
-    bool screen = false;
-    int type = 0;
-    char typeName[15];
-    bool playeable = true;
-}; 
+struct tTAPBlockDescriptor {
+  bool corrupted = false;
+  int offset = 0;
+  int size = 0;
+  int chk = 0;
+  char name[11];
+  bool nameDetected = false;
+  bool header = false;
+  bool screen = false;
+  int type = 0;
+  char typeName[15];
+  bool playeable = true;
+};
 
 // Estructura de un descriptor de TZX
-struct tTZXBlockDescriptor 
-{
+struct tTZXBlockDescriptor {
   int ID = 0;
   int offset = 0;
   int size = 0;
   int chk = 0;
-  double pauseAfterThisBlock = 1000.0;   //ms
+  double pauseAfterThisBlock = 1000.0; // ms
   int lengthOfData = 0;
   int offsetData = 0;
   char name[30];
@@ -200,8 +198,8 @@ struct tTZXBlockDescriptor
   tTimming timming;
   tSymbol symbol;
   uint16_t call_sequence_count;
-  uint16_t* call_sequence_array;
-  uint16_t numSelections;  
+  uint16_t *call_sequence_array;
+  uint16_t numSelections;
   char typeName[36];
   //
   int compressionType = 0;
@@ -209,86 +207,81 @@ struct tTZXBlockDescriptor
   int loop_count = 0;
   bool jump_this_ID = false;
   int samplingRate = 79;
-  bool signalLvl = false;  //true == polarization UP, false == DOWN
-  uint8_t edge = POLARIZATION;       // Edge of the begining of the block. Only for playing
-  
+  bool signalLvl = false; // true == polarization UP, false == DOWN
+  uint8_t edge =
+      POLARIZATION; // Edge of the begining of the block. Only for playing
 };
 
 // Estructura tipo TZX
-struct tTZX
-{
-  char name[11];                               // Nombre del TZX
-  uint32_t size = 0;                             // Tamaño
-  int numBlocks = 0;                        // Numero de bloques
-  bool hasGroupBlocks = false; 
-  tTZXBlockDescriptor* descriptor = nullptr;          // Descriptor
+struct tTZX {
+  char name[11];     // Nombre del TZX
+  uint32_t size = 0; // Tamaño
+  int numBlocks = 0; // Numero de bloques
+  bool hasGroupBlocks = false;
+  tTZXBlockDescriptor *descriptor = nullptr; // Descriptor
   bool availableForREM = true;
 };
 
-struct tPZXBlockDescriptor
-{
+struct tPZXBlockDescriptor {
   char name[11];
-  char tag[5];              // "PZXT", "PULS", etc.
+  char tag[5]; // "PZXT", "PULS", etc.
   int offset = 0;
   int size = 0;
   bool playeable = false;
   char typeName[36];
-  uint8_t initial_level = 0;  // 0 para low, 1 para high
-  tTimming timming;           // Para bloques PULS y DATA
-  
+  uint8_t initial_level = 0; // 0 para low, 1 para high
+  tTimming timming;          // Para bloques PULS y DATA
+
   // Para bloque DATA
   int data_bit_count = 0;
   int data_tail_pulse = 0;
   int data_p0_count = 0;
   int data_p1_count = 0;
-  uint16_t* data_s0_pulses = nullptr;
-  uint16_t* data_s1_pulses = nullptr;
+  uint16_t *data_s0_pulses = nullptr;
+  uint16_t *data_s1_pulses = nullptr;
   int data_stream_offset = 0;
   // Para bloques CSW
   int csw_num_pulses;
-  tRlePulse* csw_pulse_data;
+  tRlePulse *csw_pulse_data;
   // Para el bloque PZX STOP
   uint16_t stop_flags;
   // Para bloque PAUS
   int pause_duration = 0;
-  uint8_t edge = POLARIZATION;       // Edge of the begining of the block. Only for playing
+  uint8_t edge =
+      POLARIZATION; // Edge of the begining of the block. Only for playing
 };
 
-struct tAudioList
-{
-    String path = "";
-    String filename = "";
-    int index = 0;
-    int size = 0;
+struct tAudioList {
+  String path = "";
+  String filename = "";
+  int index = 0;
+  int size = 0;
 };
 
-struct tRadioList
-{
-    String name = "";
-    String url = "";
-    int index = 0;
+struct tRadioList {
+  String name = "";
+  String url = "";
+  int index = 0;
 };
 
 // En little endian. Formato PZX
-struct tPZX
-{
-  char tag[5] = {""};                           // el tag son 4 caracteres + /0
-  int numBlocks = 0;                            // Numero de bloques
-  char name[11] = {""};                         // Nombre del PZX
+struct tPZX {
+  char tag[5] = {""};   // el tag son 4 caracteres + /0
+  int numBlocks = 0;    // Numero de bloques
+  char name[11] = {""}; // Nombre del PZX
   uint32_t size = 0;
   uint32_t csw_sampling_rate;
-  tPZXBlockDescriptor* descriptor = nullptr;
+  tPZXBlockDescriptor *descriptor = nullptr;
   bool availableForREM = false;
 };
 
 // Estructura tipo TAP
-struct tTAP 
-{
-    char name[11];                              // Nombre del TAP
-    uint32_t size = 0;                          // Tamaño
-    int numBlocks = 0;                          // Numero de bloques
-    tTAPBlockDescriptor* descriptor;            // Descriptor
-    bool availableForREM = true;
+struct tTAP {
+  char name[11];                   // Nombre del TAP
+  uint32_t size = 0;               // Tamaño
+  int numBlocks = 0;               // Numero de bloques
+  tTAPBlockDescriptor *descriptor; // Descriptor
+  bool availableForREM = true;
 };
 
 // Procesador de TAP
@@ -300,7 +293,7 @@ tPZX myPZX;
 
 // tMediaDescriptor myMediaDescriptor[256]; // Descriptor de ficheros multimedia
 
-// struct tBlock 
+// struct tBlock
 // {
 //   int index = 0;            // Numero del bloque
 //   int offset = 0;           // Byte donde empieza
@@ -309,21 +302,17 @@ tPZX myPZX;
 // };
 
 // Estructura para el HMI
-struct tFileBuffer
-{
-    bool isDir = false;
-    String path = "";
-    String type = "";
-    uint32_t fileposition = 0;
+struct tFileBuffer {
+  bool isDir = false;
+  String path = "";
+  String type = "";
+  uint32_t fileposition = 0;
 };
 
-struct tConfig
-{
+struct tConfig {
   bool enable = false;
   String cfgLine = "";
 };
-
-
 
 //
 //
@@ -359,7 +348,7 @@ int DSYNC2 = 735;
 int DBIT_0 = 855;
 int DBIT_1 = 1710;
 // Pulsos guia
-int DPILOT_LEN = 2168;  
+int DPILOT_LEN = 2168;
 // Definición del silencio entre bloques en ms
 int DSILENT = 1000;
 // A 44.1KHz
@@ -421,7 +410,7 @@ uint8_t POWERLED_DUTY = POWER_LED_INTENSITY;
 
 uint8_t TAPESTATE = 0;
 uint8_t LAST_TAPESTATE = 0;
-bool  ADD_ONE_SAMPLE_COMPENSATION = false;
+bool ADD_ONE_SAMPLE_COMPENSATION = false;
 bool MCP23017_AVAILABLE = true;
 
 // --------------------------------------------------------------------------
@@ -431,17 +420,17 @@ bool MCP23017_AVAILABLE = true;
 // --------------------------------------------------------------------------
 // Inicialmente se define como flanco DOWN para que empiece en UP.
 // Polarización de la señal.
-// Con esto hacemos que el primer pulso sea UP 
+// Con esto hacemos que el primer pulso sea UP
 // (porque el ultimo era DOWN supuestamente)
 
-
 // bool FIRST_BLOCK_INVERTED = false;
-//edge SCOPE = down;
-//bool APPLY_END = false;
-double SAMPLING_RATE = STANDARD_SR_8_BIT_MACHINE;      //STANDARD_SR_ZX_SPECTRUM               // 44100 
-int BASE_SR = STANDARD_SR_REC_ZX_SPECTRUM;            //STANDARD_SR_ZX_SPECTRUM               // 44100
-int BASE_SR_TAP = 31250;        //STANDARD_SR_8_BIT_MACHINE_TAP         // 44100
-int LAST_SAMPLING_RATE = 22050; //44100;
+// edge SCOPE = down;
+// bool APPLY_END = false;
+double SAMPLING_RATE =
+    STANDARD_SR_8_BIT_MACHINE; // STANDARD_SR_ZX_SPECTRUM               // 44100
+int BASE_SR = STANDARD_SR_REC_ZX_SPECTRUM; // STANDARD_SR_ZX_SPECTRUM // 44100
+int BASE_SR_TAP = 31250; // STANDARD_SR_8_BIT_MACHINE_TAP         // 44100
+int LAST_SAMPLING_RATE = 22050;                    // 44100;
 int WAV_SAMPLING_RATE = DEFAULT_WAV_SAMPLING_RATE; // 44100;
 int WAV_BITS_PER_SAMPLE = 16;
 int WAV_CHAN = 2;
@@ -466,25 +455,25 @@ int FILE_LENGTH = 0;
 bool FILE_IS_OPEN = false;
 
 // Schmitt trigger
-int SCHMITT_THR = 10; //Porcentage
-int SCHMITT_AMP = 50; //Porcentage
+int SCHMITT_THR = 10; // Porcentage
+int SCHMITT_AMP = 50; // Porcentage
 float IN_REC_VOL = 0.5;
 
 int LAST_SCHMITT_THR = 0;
 bool EN_SCHMITT_CHANGE = false;
 bool EN_EAR_INVERSION = false;
 
-int MIN_SYNC = 10;   //6
-int MAX_SYNC = 18;  //19  -- S1: 190.6us + S2: 210us 
+int MIN_SYNC = 10; // 6
+int MAX_SYNC = 18; // 19  -- S1: 190.6us + S2: 210us
 
-int MIN_BIT0 = 19;   //1
-int MAX_BIT0 = 22;  //31  -- 2442.8 us * 2
+int MIN_BIT0 = 19; // 1
+int MAX_BIT0 = 22; // 31  -- 2442.8 us * 2
 
-int MIN_BIT1 = 24;  //32
-int MAX_BIT1 = 44;  //48  -- 4885.7 us * 2
+int MIN_BIT1 = 24; // 32
+int MAX_BIT1 = 44; // 48  -- 4885.7 us * 2
 
-int MIN_LEAD = 50;  //54
-int MAX_LEAD = 55;  //62  -- 619.4us * 2
+int MIN_LEAD = 50; // 54
+int MAX_LEAD = 55; // 62  -- 619.4us * 2
 
 int MAX_PULSES_LEAD = 256;
 
@@ -495,18 +484,17 @@ bool SWAP_EAR_CHANNEL = false;
 //
 String RECORDING_DIR = "/REC";
 int RECORDING_ERROR = 0;
-//bool waitingNextBlock = false;
-//bool FIRSTBLOCKREAD = false;
- 
+// bool waitingNextBlock = false;
+// bool FIRSTBLOCKREAD = false;
 
-//int RECORDING_ERROR = 0;
+// int RECORDING_ERROR = 0;
 bool REC_AUDIO_LOOP = true;
 bool WIFI_ENABLE = true;
 bool WIFI_CONNECTED = false;
 bool DHCP_ENABLE = false;
 //
 String LAST_COMMAND = "";
-//bool TIMMING_STABLISHED = false;
+// bool TIMMING_STABLISHED = false;
 bool YES = false;
 bool NO = false;
 
@@ -537,8 +525,8 @@ String dbgRep = "";
 
 // Configuracion
 // Configuracion
-tConfig* CFGHMI;
-tConfig* CFGWIFI;
+tConfig *CFGHMI;
+tConfig *CFGWIFI;
 
 //
 String POWAIP = "";
@@ -546,7 +534,8 @@ String POWAIP = "";
 // OTRAS
 bool TEST_RUNNING = false;
 bool STOP_OR_PAUSE_REQUEST = false;
-int LOADING_STATE = 0;              // 0 - Standby, 1 - Play, 2 - Stop, 3 - Pause, 4 - Recording
+int LOADING_STATE =
+    0; // 0 - Standby, 1 - Play, 2 - Stop, 3 - Pause, 4 - Recording
 int CURRENT_BLOCK_IN_PROGRESS = 0;
 int PROGRESS_BAR_REFRESH = 256;
 int PROGRESS_BAR_REFRESH_2 = 32;
@@ -589,14 +578,14 @@ int PRG_BAR_OFFSET_INI = 0;
 int PRG_BAR_OFFSET_END = 0;
 int BYTES_BASE = 0;
 int BYTES_TOBE_LOAD = 0;
-//int BYTES_IN_THIS_BLOCK = 0;
+// int BYTES_IN_THIS_BLOCK = 0;
 int BYTES_LAST_BLOCK = 0;
-//bool TSX_PARTITIONED = false;
+// bool TSX_PARTITIONED = false;
 int TOTAL_BLOCKS = 0;
 int LOOP_START = 0;
 int BL_LOOP_START = 0;
-int LOOP_COUNT=0;
-int LOOP_PLAYED=0;
+int LOOP_COUNT = 0;
+int LOOP_PLAYED = 0;
 int LOOP_END = 0;
 int BL_LOOP_END = 0;
 bool WAITING_FOR_USER_ACTION = false;
@@ -610,10 +599,10 @@ int SCREEN_COL = 0;
 int SCREEN_SECTION = 0;
 
 // File system
-int FILE_INDEX = 0;           // Índice de la fila seleccionada
-int FILE_PAGE = 0;            // Contador de la pagina leida
+int FILE_INDEX = 0; // Índice de la fila seleccionada
+int FILE_PAGE = 0;  // Contador de la pagina leida
 // String FILE_PATH="";         // Ruta del archivo seleccionado
-int FILE_LAST_DIR_LEVEL = 0;  // Nivel de profundida de directorio
+int FILE_LAST_DIR_LEVEL = 0; // Nivel de profundida de directorio
 String FILE_LAST_DIR = "/";
 String FILE_PREVIOUS_DIR = "/";
 String FILE_LAST_DIR_LAST = "../";
@@ -629,7 +618,6 @@ bool FILE_SELECTED = false;
 bool FILE_PREPARED = false;
 bool FILE_INSIDE_TAPE = false;
 bool PROGRAM_NAME_DETECTED = false;
-
 
 tFileBuffer FILES_BUFF[MAX_FILES_TO_LOAD];
 tFileBuffer FILES_FOUND_BUFF[MAX_FILES_FOUND_BUFF];
@@ -654,7 +642,7 @@ bool FILE_DIR_OPEN_FAILED = false;
 bool FILE_BROWSER_OPEN = false;
 bool UPDATE = false;
 bool START_FFWD_ANIMATION = false;
-//bool FILE_BROWSER_SEARCHING = false;
+// bool FILE_BROWSER_SEARCHING = false;
 bool FB_READING_FILES = false;
 bool FB_CANCEL_READING_FILES = false;
 bool FILE_CORRUPTED = false;
@@ -662,7 +650,7 @@ bool FILE_CORRUPTED = false;
 bool IN_THE_SAME_DIR = false;
 
 String FILE_TXT_TO_SEARCH = "";
-//bool waitingRecMessageShown = false;
+// bool waitingRecMessageShown = false;
 int CURRENT_PAGE = 0;
 bool TAPE_PAGE_SHOWN = false;
 bool RADIO_PAGE_SHOWN = false;
@@ -704,7 +692,7 @@ bool LCD_ON = false;
 bool ABORT = false;
 bool DISABLE_SD = false;
 
-//Estado de acciones de reproducción
+// Estado de acciones de reproducción
 const int PLAY_ST = 0;
 const int STOP_ST = 1;
 const int PAUSE_ST = 2;
@@ -755,14 +743,14 @@ bool menuOn = false;
 int nMENU = 0;
 
 // Indica cuando el WEBFILE esta ocupado
-//bool WF_UPLOAD_TO_SD = 0;
+// bool WF_UPLOAD_TO_SD = 0;
 
 bool SORT_FILES_FIRST_DIR = true;
 bool REGENERATE_IDX = false;
 
 #ifdef BLUETOOTH_ENABLE
-    bool BLUETOOTH_ACTIVE = true;
-    String BLUETOOTH_DEVICE_PAIRED = "JBL T450BT";
+bool BLUETOOTH_ACTIVE = true;
+String BLUETOOTH_DEVICE_PAIRED = "JBL T450BT";
 #endif
 
 // Control remoto de motor (REM)
@@ -771,7 +759,7 @@ bool REM_DETECTED = false;
 bool STATUS_REM_ACTUATED = false;
 
 // WiFi
-char HOSTNAME[32] =  {};
+char HOSTNAME[32] = {};
 String ssid = "";
 char password[64] = {};
 
@@ -779,13 +767,12 @@ char password[64] = {};
 IPAddress local_IP(0, 0, 0, 0); // Your Desired Static IP Address
 IPAddress subnet(0, 0, 0, 0);
 IPAddress gateway(0, 0, 0, 0);
-IPAddress primaryDNS(0, 0, 0, 0); // Not Mandatory
-IPAddress secondaryDNS(0, 0, 0, 0);     // Not Mandatory
+IPAddress primaryDNS(0, 0, 0, 0);   // Not Mandatory
+IPAddress secondaryDNS(0, 0, 0, 0); // Not Mandatory
 
 // Media player
 bool MEDIA_PLAYER_EN = false;
 bool WAS_LAUNCHED = false;
-
 
 // Internet Radio
 bool IRADIO_EN = false;
@@ -800,11 +787,10 @@ bool CMD_FROM_REMOTE_CONTROL = false;
 //
 bool IGNORE_DSC = false;
 
-//bool PZX_EJECT_RQT = false;
+// bool PZX_EJECT_RQT = false;
 
 // Auto-update
 String HMI_MODEL = "";
-
 
 // Declaraciones de metodos
 // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -814,37 +800,35 @@ void logln(String txt);
 
 // ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-
 // Define the array of configuration entries
-ConfigEntry configEntries[] = 
-{
-  {"STEopt", CONFIG_TYPE_BOOL, &EN_STEREO},
-  {"MAMopt", CONFIG_TYPE_BOOL, &ACTIVE_AMP},
-  {"VLIopt", CONFIG_TYPE_BOOL, &VOL_LIMIT_HEADPHONE},
-  {"VOLMopt", CONFIG_TYPE_FLOAT, &MASTER_VOL},
-  {"VOLLopt", CONFIG_TYPE_FLOAT, &MAIN_VOL_L},
-  {"VOLRopt", CONFIG_TYPE_FLOAT, &MAIN_VOL_R},
-  {"EQHopt", CONFIG_TYPE_FLOAT, &EQ_HIGH},
-  {"EQMopt", CONFIG_TYPE_FLOAT, &EQ_MID},
-  {"EQLopt", CONFIG_TYPE_FLOAT, &EQ_LOW},
-  {"PLEopt", CONFIG_TYPE_BOOL, &ENABLE_POWER_LED},
-  {"SFFopt", CONFIG_TYPE_BOOL, &SORT_FILES_FIRST_DIR},
-  {"SPKopt", CONFIG_TYPE_BOOL, &EN_SPEAKER},
-  {"RBUFopt", CONFIG_TYPE_BOOL, &RADIO_BUFFERED},
-  {"DHCPFopt", CONFIG_TYPE_BOOL, &DHCP_ENABLE},
+ConfigEntry configEntries[] = {
+    {"STEopt", CONFIG_TYPE_BOOL, &EN_STEREO},
+    {"MAMopt", CONFIG_TYPE_BOOL, &ACTIVE_AMP},
+    {"VLIopt", CONFIG_TYPE_BOOL, &VOL_LIMIT_HEADPHONE},
+    {"VOLMopt", CONFIG_TYPE_FLOAT, &MASTER_VOL},
+    {"VOLLopt", CONFIG_TYPE_FLOAT, &MAIN_VOL_L},
+    {"VOLRopt", CONFIG_TYPE_FLOAT, &MAIN_VOL_R},
+    {"EQHopt", CONFIG_TYPE_FLOAT, &EQ_HIGH},
+    {"EQMopt", CONFIG_TYPE_FLOAT, &EQ_MID},
+    {"EQLopt", CONFIG_TYPE_FLOAT, &EQ_LOW},
+    {"PLEopt", CONFIG_TYPE_BOOL, &ENABLE_POWER_LED},
+    {"SFFopt", CONFIG_TYPE_BOOL, &SORT_FILES_FIRST_DIR},
+    {"SPKopt", CONFIG_TYPE_BOOL, &EN_SPEAKER},
+    {"RBUFopt", CONFIG_TYPE_BOOL, &RADIO_BUFFERED},
+    {"DHCPFopt", CONFIG_TYPE_BOOL, &DHCP_ENABLE},
 };
 
 //           s.end());
 // }
 
 // Function to load the configuration
-bool loadHMICfg() 
-{
+bool loadHMICfg() {
   // Initialize NVS
   esp_err_t err = nvs_flash_init();
-  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      ESP_ERROR_CHECK(nvs_flash_erase());
-      err = nvs_flash_init();
+  if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
+      err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    err = nvs_flash_init();
   }
   ESP_ERROR_CHECK(err);
 
@@ -852,89 +836,94 @@ bool loadHMICfg()
   nvs_handle_t handle;
   err = nvs_open("storage", NVS_READONLY, &handle);
   if (err != ESP_OK) {
-      printf("Error (%s) opening NVS handle for read!\n", esp_err_to_name(err));
-      logln("Error - abriendo NVS");
-      return true;
+    printf("Error (%s) opening NVS handle for read!\n", esp_err_to_name(err));
+    logln("Error - abriendo NVS");
+    return true;
   }
 
   // Iterate over the configuration entries and load them
-  for (auto& entry : configEntries) {
-      switch (entry.type) {
-          case CONFIG_TYPE_STRING: {
-              size_t required_size = 0;
-              err = nvs_get_str(handle, entry.key, NULL, &required_size); // Get required size first
-              if (err == ESP_OK && required_size > 0) {
-                  std::string* str_value = static_cast<std::string*>(entry.value);
-                  char* buffer = new char[required_size];
-                  err = nvs_get_str(handle, entry.key, buffer, &required_size);
-                  if (err == ESP_OK) {
-                      // Asignar el contenido del buffer al string
-                      *str_value = std::string(buffer, required_size - 1);  // Se resta 1 para no incluir el carácter nulo
-                  }
-                  delete[] buffer;  // Free memory
-              } else if (err == ESP_ERR_NVS_NOT_FOUND) {
-                  printf("Key '%s' not found, skipping...\n", entry.key);
-              }
-              break;
-          }
-          case CONFIG_TYPE_BOOL: {
-              std::string bool_str;
-              size_t required_size = 0;
-              err = nvs_get_str(handle, entry.key, NULL, &required_size); // Get size of boolean string
-              if (err == ESP_OK && required_size > 0) {
-                  char* buffer = new char[required_size];
-                  err = nvs_get_str(handle, entry.key, buffer, &required_size);
-                  if (err == ESP_OK) {
-                      bool_str = buffer;
-                      *static_cast<bool*>(entry.value) = (bool_str == "true");
-                  }
-                  delete[] buffer;
-              } else if (err == ESP_ERR_NVS_NOT_FOUND) {
-                  printf("Key '%s' not found, skipping...\n", entry.key);
-              }
-              break;
-          }
-          case CONFIG_TYPE_UINT8: {
-              err = nvs_get_u8(handle, entry.key, static_cast<uint8_t*>(entry.value));
-              if (err == ESP_ERR_NVS_NOT_FOUND) {
-                  printf("Key '%s' not found, skipping...\n", entry.key);
-              }
-              break;
-          }
-          case CONFIG_TYPE_UINT16: {
-              err = nvs_get_u16(handle, entry.key, static_cast<uint16_t*>(entry.value));
-              if (err == ESP_ERR_NVS_NOT_FOUND) {
-                  printf("Key '%s' not found, skipping...\n", entry.key);
-              }
-              break;
-          }
-          case CONFIG_TYPE_FLOAT: {
-            err = nvs_get_i32(handle, entry.key, static_cast<int32_t*>(entry.value));
-            if (err == ESP_ERR_NVS_NOT_FOUND) {
-                printf("Key '%s' not found, skipping...\n", entry.key);
-            }
-            break;
-          }        
-          case CONFIG_TYPE_DOUBLE: {
-            err = nvs_get_i64(handle, entry.key, static_cast<int64_t*>(entry.value));
-            if (err == ESP_ERR_NVS_NOT_FOUND) {
-                printf("Key '%s' not found, skipping...\n", entry.key);
-            }
-            break;
-          }             
-          case CONFIG_TYPE_INT8: {
-              err = nvs_get_i8(handle, entry.key, static_cast<int8_t*>(entry.value));
-              if (err == ESP_ERR_NVS_NOT_FOUND) {
-                  printf("Key '%s' not found, skipping...\n", entry.key);
-              }
-              break;
-          }
+  for (auto &entry : configEntries) {
+    switch (entry.type) {
+    case CONFIG_TYPE_STRING: {
+      size_t required_size = 0;
+      err = nvs_get_str(handle, entry.key, NULL,
+                        &required_size); // Get required size first
+      if (err == ESP_OK && required_size > 0) {
+        std::string *str_value = static_cast<std::string *>(entry.value);
+        char *buffer = new char[required_size];
+        err = nvs_get_str(handle, entry.key, buffer, &required_size);
+        if (err == ESP_OK) {
+          // Asignar el contenido del buffer al string
+          *str_value = std::string(
+              buffer,
+              required_size - 1); // Se resta 1 para no incluir el carácter nulo
+        }
+        delete[] buffer; // Free memory
+      } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        printf("Key '%s' not found, skipping...\n", entry.key);
       }
+      break;
+    }
+    case CONFIG_TYPE_BOOL: {
+      std::string bool_str;
+      size_t required_size = 0;
+      err = nvs_get_str(handle, entry.key, NULL,
+                        &required_size); // Get size of boolean string
+      if (err == ESP_OK && required_size > 0) {
+        char *buffer = new char[required_size];
+        err = nvs_get_str(handle, entry.key, buffer, &required_size);
+        if (err == ESP_OK) {
+          bool_str = buffer;
+          *static_cast<bool *>(entry.value) = (bool_str == "true");
+        }
+        delete[] buffer;
+      } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        printf("Key '%s' not found, skipping...\n", entry.key);
+      }
+      break;
+    }
+    case CONFIG_TYPE_UINT8: {
+      err = nvs_get_u8(handle, entry.key, static_cast<uint8_t *>(entry.value));
+      if (err == ESP_ERR_NVS_NOT_FOUND) {
+        printf("Key '%s' not found, skipping...\n", entry.key);
+      }
+      break;
+    }
+    case CONFIG_TYPE_UINT16: {
+      err =
+          nvs_get_u16(handle, entry.key, static_cast<uint16_t *>(entry.value));
+      if (err == ESP_ERR_NVS_NOT_FOUND) {
+        printf("Key '%s' not found, skipping...\n", entry.key);
+      }
+      break;
+    }
+    case CONFIG_TYPE_FLOAT: {
+      err = nvs_get_i32(handle, entry.key, static_cast<int32_t *>(entry.value));
+      if (err == ESP_ERR_NVS_NOT_FOUND) {
+        printf("Key '%s' not found, skipping...\n", entry.key);
+      }
+      break;
+    }
+    case CONFIG_TYPE_DOUBLE: {
+      err = nvs_get_i64(handle, entry.key, static_cast<int64_t *>(entry.value));
+      if (err == ESP_ERR_NVS_NOT_FOUND) {
+        printf("Key '%s' not found, skipping...\n", entry.key);
+      }
+      break;
+    }
+    case CONFIG_TYPE_INT8: {
+      err = nvs_get_i8(handle, entry.key, static_cast<int8_t *>(entry.value));
+      if (err == ESP_ERR_NVS_NOT_FOUND) {
+        printf("Key '%s' not found, skipping...\n", entry.key);
+      }
+      break;
+    }
+    }
 
-      // Print error if there's a problem reading any entry
-      if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
-          printf("Error (%s) reading key '%s'!\n", esp_err_to_name(err), entry.key);
-      }
+    // Print error if there's a problem reading any entry
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+      printf("Error (%s) reading key '%s'!\n", esp_err_to_name(err), entry.key);
+    }
   }
 
   // Close NVS
@@ -943,16 +932,15 @@ bool loadHMICfg()
   return false;
 }
 
-
 // Function to save the configuration
-void saveHMIcfg(std::string value) 
-{
+void saveHMIcfg(std::string value) {
 
   // Initialize NVS
   esp_err_t err = nvs_flash_init();
-  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-      ESP_ERROR_CHECK(nvs_flash_erase());
-      err = nvs_flash_init();
+  if (err == ESP_ERR_NVS_NO_FREE_PAGES ||
+      err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    err = nvs_flash_init();
   }
   ESP_ERROR_CHECK(err);
 
@@ -960,164 +948,165 @@ void saveHMIcfg(std::string value)
   nvs_handle_t handle;
   err = nvs_open("storage", NVS_READWRITE, &handle);
   if (err != ESP_OK) {
-      printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
-      logln("Error opening NVS handle");
-      return;
+    printf("Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+    logln("Error opening NVS handle");
+    return;
   }
 
   // Iterate over the configuration entries and save them
-  for (const auto& entry : configEntries) {
-      if (value == "all" || value == entry.key) {
-          switch (entry.type) {
-              case CONFIG_TYPE_STRING:
-                  nvs_set_str(handle, entry.key, static_cast<std::string*>(entry.value)->c_str());
-                  break;
-              case CONFIG_TYPE_BOOL:
-                  nvs_set_str(handle, entry.key, *static_cast<bool*>(entry.value) ? "true" : "false");
-                  break;
-              case CONFIG_TYPE_UINT8:
-                  nvs_set_u8(handle, entry.key, *static_cast<uint8_t*>(entry.value));
-                  break;
-              case CONFIG_TYPE_UINT16:
-                  nvs_set_u16(handle, entry.key, *static_cast<uint16_t*>(entry.value));
-                  break;
-              case CONFIG_TYPE_UINT32:
-              nvs_set_u32(handle, entry.key, *static_cast<uint32_t*>(entry.value));
-                  break;
-              case CONFIG_TYPE_FLOAT:
-                  nvs_set_blob(handle, entry.key, static_cast<float*>(entry.value), sizeof(float));
-                  break;
-                  case CONFIG_TYPE_INT8:
-              nvs_set_i8(handle, entry.key, *static_cast<int8_t*>(entry.value));
-                  break;
-          }
+  for (const auto &entry : configEntries) {
+    if (value == "all" || value == entry.key) {
+      switch (entry.type) {
+      case CONFIG_TYPE_STRING:
+        nvs_set_str(handle, entry.key,
+                    static_cast<std::string *>(entry.value)->c_str());
+        break;
+      case CONFIG_TYPE_BOOL:
+        nvs_set_str(handle, entry.key,
+                    *static_cast<bool *>(entry.value) ? "true" : "false");
+        break;
+      case CONFIG_TYPE_UINT8:
+        nvs_set_u8(handle, entry.key, *static_cast<uint8_t *>(entry.value));
+        break;
+      case CONFIG_TYPE_UINT16:
+        nvs_set_u16(handle, entry.key, *static_cast<uint16_t *>(entry.value));
+        break;
+      case CONFIG_TYPE_UINT32:
+        nvs_set_u32(handle, entry.key, *static_cast<uint32_t *>(entry.value));
+        break;
+      case CONFIG_TYPE_FLOAT:
+        nvs_set_blob(handle, entry.key, static_cast<float *>(entry.value),
+                     sizeof(float));
+        break;
+      case CONFIG_TYPE_INT8:
+        nvs_set_i8(handle, entry.key, *static_cast<int8_t *>(entry.value));
+        break;
       }
+    }
   }
 
   // Commit the updates to NVS
   err = nvs_commit(handle);
-  if (err != ESP_OK) 
-  {
-      printf("Error (%s) committing updates to NVS!\n", esp_err_to_name(err));
+  if (err != ESP_OK) {
+    printf("Error (%s) committing updates to NVS!\n", esp_err_to_name(err));
   }
 
   // Close NVS
   nvs_close(handle);
-
 }
 
-void saveVolSliders()
-{
+void saveVolSliders() {
   saveHMIcfg("VOLLopt");
-  saveHMIcfg("VOLRopt");  
+  saveHMIcfg("VOLRopt");
 }
 
 // Function to load configuration from SD using fopen
 bool loadFromSD() {
   FILE *file = fopen("/sd/.powadcr.cfg", "r");
   if (!file) {
-      printf("Failed to open .powadcr.cfg for reading\n");
-      return true;
+    printf("Failed to open .powadcr.cfg for reading\n");
+    return true;
   }
 
   char line[128]; // Buffer para leer cada línea
   while (fgets(line, sizeof(line), file)) {
-      char *delimiterPos = strchr(line, '=');
-      if (!delimiterPos) continue; // Saltar líneas sin '='
+    char *delimiterPos = strchr(line, '=');
+    if (!delimiterPos)
+      continue; // Saltar líneas sin '='
 
-      *delimiterPos = '\0'; // Dividir en campo y valor
-      std::string key = line;
-      std::string valueStr = delimiterPos + 1;
+    *delimiterPos = '\0'; // Dividir en campo y valor
+    std::string key = line;
+    std::string valueStr = delimiterPos + 1;
 
-      // Remover salto de línea final si existe
-      valueStr.erase(std::remove(valueStr.begin(), valueStr.end(), '\n'), valueStr.end());
+    // Remover salto de línea final si existe
+    valueStr.erase(std::remove(valueStr.begin(), valueStr.end(), '\n'),
+                   valueStr.end());
 
-      // Buscamos el campo y actualizamos su valor
-      for (auto& entry : configEntries) {
-          if (entry.key == key) {
-              switch (entry.type) {
-                  case CONFIG_TYPE_STRING:
-                      *static_cast<std::string*>(entry.value) = valueStr;
-                      break;
-                  case CONFIG_TYPE_BOOL:
-                      *static_cast<bool*>(entry.value) = (valueStr == "true");
-                      break;
-                  case CONFIG_TYPE_UINT8:
-                      *static_cast<uint8_t*>(entry.value) = static_cast<uint8_t>(std::stoi(valueStr));
-                      break;
-                  case CONFIG_TYPE_UINT16:
-                      *static_cast<uint16_t*>(entry.value) = static_cast<uint16_t>(std::stoi(valueStr));
-                      break;
-                  case CONFIG_TYPE_UINT32:
-                      *static_cast<uint32_t*>(entry.value) = static_cast<uint32_t>(std::stoi(valueStr));
-                      break;
-                  case CONFIG_TYPE_INT8:
-                      *static_cast<int8_t*>(entry.value) = static_cast<int8_t>(std::stoi(valueStr));
-                      break;
-              }
-              break;
-          }
+    // Buscamos el campo y actualizamos su valor
+    for (auto &entry : configEntries) {
+      if (entry.key == key) {
+        switch (entry.type) {
+        case CONFIG_TYPE_STRING:
+          *static_cast<std::string *>(entry.value) = valueStr;
+          break;
+        case CONFIG_TYPE_BOOL:
+          *static_cast<bool *>(entry.value) = (valueStr == "true");
+          break;
+        case CONFIG_TYPE_UINT8:
+          *static_cast<uint8_t *>(entry.value) =
+              static_cast<uint8_t>(std::stoi(valueStr));
+          break;
+        case CONFIG_TYPE_UINT16:
+          *static_cast<uint16_t *>(entry.value) =
+              static_cast<uint16_t>(std::stoi(valueStr));
+          break;
+        case CONFIG_TYPE_UINT32:
+          *static_cast<uint32_t *>(entry.value) =
+              static_cast<uint32_t>(std::stoi(valueStr));
+          break;
+        case CONFIG_TYPE_INT8:
+          *static_cast<int8_t *>(entry.value) =
+              static_cast<int8_t>(std::stoi(valueStr));
+          break;
+        }
+        break;
       }
+    }
   }
 
   fclose(file);
   return false;
 }
 
-void logHEX(int n)
-{
-    Serial.print(" 0x");
-    Serial.print(n,HEX);
+void logHEX(int n) {
+  Serial.print(" 0x");
+  Serial.print(n, HEX);
 }
 
-void log(String txt)
-{
-    Serial.print(txt);
-}
+void log(String txt) { Serial.print(txt); }
 
-void logln(String txt)
-{
-    Serial.println("");
-    Serial.print(txt);
-    Serial.println("");
+void logln(String txt) {
+  Serial.println("");
+  Serial.print(txt);
+  Serial.println("");
 }
 
 String lastAlertTxt = "";
 
-void logAlert(String txt)
-{
-    // Solo muestra una vez el mismo mensaje.
-    // esta rutina es perfecta para no llenar el buffer de salida serie con mensajes ciclicos
-    if (lastAlertTxt != txt)
-    {
-      Serial.println("");
-      Serial.print(txt);
-      Serial.println("");
-    }
+void logAlert(String txt) {
+  // Solo muestra una vez el mismo mensaje.
+  // esta rutina es perfecta para no llenar el buffer de salida serie con
+  // mensajes ciclicos
+  if (lastAlertTxt != txt) {
+    Serial.println("");
+    Serial.print(txt);
+    Serial.println("");
+  }
 
-    lastAlertTxt = txt;
+  lastAlertTxt = txt;
 }
 
-// void readFileRange(File mFile, uint8_t* &bufferFile, uint32_t offset, int size, bool logOn=false)
-// {         
-//     if (mFile) 
+// void readFileRange(File mFile, uint8_t* &bufferFile, uint32_t offset, int
+// size, bool logOn=false)
+// {
+//     if (mFile)
 //     {
 //         // Ponemos a cero el puntero de lectura del fichero
-//         mFile.seek(0);          
+//         mFile.seek(0);
 
 //         // Obtenemos el tamano del fichero
 //         int rlen = mFile.available();
 //         FILE_LENGTH = rlen;
 
 //         // Posicionamos el puntero en la posicion indicada por offset
-//         mFile.seek(offset); 
+//         mFile.seek(offset);
 
 //         // Si el fichero tiene aun datos entonces capturo
 //         if (rlen != 0)
 //         {
 //             // Leo el bloque y lo meto en bufferFile.
 //             mFile.read(bufferFile, size);
-            
+
 //             #ifdef DEBUGMODE
 //                 logln("buffer read: ");
 //                 for (int i=0; i<size; i++)
@@ -1127,8 +1116,8 @@ void logAlert(String txt)
 //                 }
 //             #endif
 //         }
-//     } 
-//     else 
+//     }
+//     else
 //     {
 //         #ifdef DEBUGMODE
 //             logln("SD Card: error opening file.");
@@ -1138,99 +1127,101 @@ void logAlert(String txt)
 // }
 
 // ✅ VERSIÓN OPTIMIZADA - SIN MALLOC/FREE INNECESARIOS
-void readFileRange(File &file, uint8_t* buffer, int offset, int size, bool usePrgBar=false)
-{
-    if (!file || size == 0 || !buffer) {
-        return;
-    }
+void readFileRange(File &file, uint8_t *buffer, int offset, int size,
+                   bool usePrgBar = false) {
+  if (!file || size == 0 || !buffer) {
+    return;
+  }
 
-    // ✅ SEEK DIRECTO AL OFFSET
-    file.seek(offset);
-    
-    // ✅ LEER DIRECTAMENTE AL BUFFER
-    size_t bytesRead = file.read(buffer, size);
-    
-    if (bytesRead != size) {
-        logln("Warning: Expected " + String(size) + " bytes, read " + String(bytesRead));
-    }
+  // ✅ SEEK DIRECTO AL OFFSET
+  file.seek(offset);
 
-    // ✅ ACTUALIZAR BARRA DE PROGRESO SI APLICA
-    if (usePrgBar) {
-        BYTES_LOADED = offset + bytesRead;
-        PROGRESS_BAR_TOTAL_VALUE = (BYTES_LOADED * 100) / BYTES_TOBE_LOAD;
-    }
+  // ✅ LEER DIRECTAMENTE AL BUFFER
+  size_t bytesRead = file.read(buffer, size);
+
+  if (bytesRead != size) {
+    logln("Warning: Expected " + String(size) + " bytes, read " +
+          String(bytesRead));
+  }
+
+  // ✅ ACTUALIZAR BARRA DE PROGRESO SI APLICA
+  if (usePrgBar) {
+    BYTES_LOADED = offset + bytesRead;
+    PROGRESS_BAR_TOTAL_VALUE = (BYTES_LOADED * 100) / BYTES_TOBE_LOAD;
+  }
 }
 
-bool isDirectoryPath(const char* path) 
-{
-    String spath = String(path);
+bool isDirectoryPath(const char *path) {
+  String spath = String(path);
 
-    int lastSlash = spath.lastIndexOf('/');
-    int lastDot = spath.lastIndexOf('.');
+  int lastSlash = spath.lastIndexOf('/');
+  int lastDot = spath.lastIndexOf('.');
 
-    // ¿Hay un punto después del último slash y al menos un carácter después del punto?
-    if (lastDot > lastSlash && lastDot < spath.length() - 1) {
-        // Asumimos que es un fichero
-        return false;
-    }
+  // ¿Hay un punto después del último slash y al menos un carácter después del
+  // punto?
+  if (lastDot > lastSlash && lastDot < spath.length() - 1) {
+    // Asumimos que es un fichero
+    return false;
+  }
 
-    // Si no, comprobamos si es directorio
-    File dir = SD_MMC.open(path, FILE_READ);
-    bool isDir = dir && dir.isDirectory();
-    dir.close();
-    return isDir;
+  // Si no, comprobamos si es directorio
+  File dir = SD_MMC.open(path, FILE_READ);
+  bool isDir = dir && dir.isDirectory();
+  dir.close();
+  return isDir;
 }
 
 int getFreeFileDescriptors() {
-    int count = 0;
-    // El ESP32 típicamente tiene un máximo de 16 descriptores
-    const int MAX_FD = 16;
-    
-    // Intentamos abrir archivos hasta que falle
-    File* temp[MAX_FD];
-    
-    for(int i = 0; i < MAX_FD; i++) {
-        temp[i] = new File(SD_MMC.open("/tmp.txt", FILE_READ));
-        if(!temp[i]->available()) {
-            count = i;
-            break;
-        }
+  int count = 0;
+  // El ESP32 típicamente tiene un máximo de 16 descriptores
+  const int MAX_FD = 16;
+
+  // Intentamos abrir archivos hasta que falle
+  File *temp[MAX_FD];
+
+  for (int i = 0; i < MAX_FD; i++) {
+    temp[i] = new File(SD_MMC.open("/tmp.txt", FILE_READ));
+    if (!temp[i]->available()) {
+      count = i;
+      break;
     }
-    
-    // Cerramos todos los archivos temporales
-    for(int i = 0; i < count; i++) {
-        temp[i]->close();
-        delete temp[i];
-    }
-    
-    return MAX_FD - count;
+  }
+
+  // Cerramos todos los archivos temporales
+  for (int i = 0; i < count; i++) {
+    temp[i]->close();
+    delete temp[i];
+  }
+
+  return MAX_FD - count;
 }
 
 // Escribe el estado (HIGH/LOW) en un pin del MCP23017 sin afectar los demás
 void MCP23017_writePin(uint8_t pin, uint8_t state, uint8_t i2c_addr = 0x20) {
-    // Determina si el pin está en GPIOA (0-7) o GPIOB (8-15)
-    uint8_t reg = (pin < 8) ? 0x12 : 0x13; // GPIOA=0x12, GPIOB=0x13
-    uint8_t pin_mask = 1 << (pin % 8);
+  // Determina si el pin está en GPIOA (0-7) o GPIOB (8-15)
+  uint8_t reg = (pin < 8) ? 0x12 : 0x13; // GPIOA=0x12, GPIOB=0x13
+  uint8_t pin_mask = 1 << (pin % 8);
 
-    // Lee el valor actual del registro
-    Wire1.beginTransmission(i2c_addr);
-    Wire1.write(reg);
-    Wire1.endTransmission();
-    Wire1.requestFrom(i2c_addr, (uint8_t)1);
-    uint8_t current = 0;
-    if (Wire1.available()) current = Wire1.read();
+  // Lee el valor actual del registro
+  Wire1.beginTransmission(i2c_addr);
+  Wire1.write(reg);
+  Wire1.endTransmission();
+  Wire1.requestFrom(i2c_addr, (uint8_t)1);
+  uint8_t current = 0;
+  if (Wire1.available())
+    current = Wire1.read();
 
-    // Modifica solo el bit correspondiente
-    if (state == HIGH)
-        current |= pin_mask;
-    else
-        current &= ~pin_mask;
+  // Modifica solo el bit correspondiente
+  if (state == HIGH)
+    current |= pin_mask;
+  else
+    current &= ~pin_mask;
 
-    // Escribe el nuevo valor
-    Wire1.beginTransmission(i2c_addr);
-    Wire1.write(reg);
-    Wire1.write(current);
-    Wire1.endTransmission();
+  // Escribe el nuevo valor
+  Wire1.beginTransmission(i2c_addr);
+  Wire1.write(reg);
+  Wire1.write(current);
+  Wire1.endTransmission();
 }
 
 // Lee el estado (HIGH/LOW) de un pin del MCP23017 sin afectar los demás
@@ -1245,64 +1236,50 @@ uint8_t MCP23017_readPin(uint8_t pin, uint8_t i2c_addr = 0x20) {
   Wire1.endTransmission();
   Wire1.requestFrom(i2c_addr, (uint8_t)1);
   uint8_t current = 0;
-  if (Wire1.available()) current = Wire1.read();
+  if (Wire1.available())
+    current = Wire1.read();
 
-    // Devuelve HIGH o LOW como digitalRead
-    return (current & pin_mask) ? HIGH : LOW;
+  // Devuelve HIGH o LOW como digitalRead
+  return (current & pin_mask) ? HIGH : LOW;
 }
 
-void remDetection()
-{
-    bool isAvailableForREM = false;
+void remDetection() {
+  bool isAvailableForREM = false;
 
-    if (TYPE_FILE_LOAD == "TAP")
-    {
-        isAvailableForREM = myTAP.availableForREM;
-    }
-    else if (TYPE_FILE_LOAD == "TZX" || TYPE_FILE_LOAD == "TSX" || TYPE_FILE_LOAD == "CDT")
-    {
-        isAvailableForREM = myTZX.availableForREM;
-    }
-    else if (TYPE_FILE_LOAD == "PZX")
-    {
-        isAvailableForREM = myPZX.availableForREM;
-    }
-    else
-    {
-        isAvailableForREM = false;
-    }
-          
-    if (REM_ENABLE && isAvailableForREM)
-    {                        
-        if (digitalRead(GPIO_MSX_REMOTE_PAUSE) == LOW && !REM_DETECTED)
-        {
-            // Informamos del REM detectado
-            myNex.writeStr("tape.wavind.txt","REM");
-            logln("REM detected");
-            // Retardo de arranque de motor
-            delay(1000/50);
-            // Flag del REM a true
-            REM_DETECTED = true;
-        }
-        else if (digitalRead(GPIO_MSX_REMOTE_PAUSE) != LOW && REM_DETECTED)
-        {
-            // Recuperamos el mensaje original
-            if (WAV_8BIT_MONO)
-            {
-                myNex.writeStr("tape.wavind.txt","WAV8");
-            }
-            else
-            {
-                myNex.writeStr("tape.wavind.txt","");
-            }
-            
-            logln("REM released");
-            // Retardo de parada de motor
-            delay(1000/50);
+  if (TYPE_FILE_LOAD == "TAP") {
+    isAvailableForREM = myTAP.availableForREM;
+  } else if (TYPE_FILE_LOAD == "TZX" || TYPE_FILE_LOAD == "TSX" ||
+             TYPE_FILE_LOAD == "CDT") {
+    isAvailableForREM = myTZX.availableForREM;
+  } else if (TYPE_FILE_LOAD == "PZX") {
+    isAvailableForREM = myPZX.availableForREM;
+  } else {
+    isAvailableForREM = false;
+  }
 
-            // Reseteamos el flag
-            REM_DETECTED = false;
-        }
+  if (REM_ENABLE && isAvailableForREM) {
+    if (digitalRead(GPIO_MSX_REMOTE_PAUSE) == LOW && !REM_DETECTED) {
+      // Informamos del REM detectado
+      myNex.writeStr("tape.wavind.txt", "REM");
+      logln("REM detected");
+      // Retardo de arranque de motor
+      delay(1000 / 50);
+      // Flag del REM a true
+      REM_DETECTED = true;
+    } else if (digitalRead(GPIO_MSX_REMOTE_PAUSE) != LOW && REM_DETECTED) {
+      // Recuperamos el mensaje original
+      if (WAV_8BIT_MONO) {
+        myNex.writeStr("tape.wavind.txt", "WAV8");
+      } else {
+        myNex.writeStr("tape.wavind.txt", "");
+      }
+
+      logln("REM released");
+      // Retardo de parada de motor
+      delay(1000 / 50);
+
+      // Reseteamos el flag
+      REM_DETECTED = false;
     }
+  }
 }
-
