@@ -8276,19 +8276,35 @@ void setup() {
 
   // -------------------------------------------------------------------------
   //
+  // Inicializamos el soporte de audio
+  //
+  // -------------------------------------------------------------------------
+  setupAudioKit();
+
+  // -------------------------------------------------------------------------
+  // Configuramos acceso a la SD
+  // -------------------------------------------------------------------------
+  setupSDCard();
+
+  // -------------------------------------------------------------------------
+  //
   // Configuracion I2C - MCP23017
   //
   // -------------------------------------------------------------------------
-  if (setupMCP23017()) {
-    // Hay placa de extensión los pines son otros
-    logln("MCP23017 found");
-    hmiTxD = 5;
-    hmiRxD = 22;
-    powerLed = 18;
-    GPIO_MSX_REMOTE_PAUSE = 19;
+  // I2C_ScannerWire();
+  if (SD_MMC.exists("/CFG/MCP23017.enable")) {
+    if (setupMCP23017()) {
+      // Hay placa de extensión los pines son otros
+      logln("MCP23017 found");
+      hmiTxD = 5;
+      hmiRxD = 22;
+      // Configurado en la placa MCP23017
+      // powerLed = 18;
+      GPIO_MSX_REMOTE_PAUSE = 19;
+    }
   } else {
     // pines originales
-    logln("MCP23017 not found");
+    logln("MCP23017 not enable");
     hmiTxD = 23;
     hmiRxD = 18;
     powerLed = 22;
@@ -8313,13 +8329,6 @@ void setup() {
   hmi.writeString("statusLCD.txt=\"POWADCR " + String(VERSION) + "\"");
   delay(1250);
 
-  // -------------------------------------------------------------------------
-  //
-  // Inicializamos el soporte de audio
-  //
-  // -------------------------------------------------------------------------
-  setupAudioKit();
-
   // Arrancamos el indicador de power
   actuatePowerLed(HIGH);
 
@@ -8336,11 +8345,6 @@ void setup() {
   pinMode(GPIO_MSX_REMOTE_PAUSE, INPUT_PULLUP);
 // }
 #endif
-
-  // -------------------------------------------------------------------------
-  // Configuramos acceso a la SD
-  // -------------------------------------------------------------------------
-  setupSDCard();
 
   // --------------------------------------------------------------------------
   //
