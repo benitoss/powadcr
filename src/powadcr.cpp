@@ -7750,7 +7750,7 @@ void Task0code(void *pvParameters) {
     // {
     // Lo dejamos fijo a low power
     if (!REC) {
-      actuatePowerLed(HIGH);
+      actuatePowerLed(1);
     }
     // else
     // {
@@ -7768,7 +7768,7 @@ void Task0code(void *pvParameters) {
           statusPoweLed = !statusPoweLed;
           actuatePowerLed(statusPoweLed);
         } else if (!IRADIO_EN) {
-          actuatePowerLed(HIGH);
+          actuatePowerLed(1);
         }
       }
     }
@@ -8330,7 +8330,28 @@ void setup() {
   delay(1250);
 
   // Arrancamos el indicador de power
-  actuatePowerLed(HIGH);
+
+  // analogWrite(powerLed, dutyEnd);
+  // mcp1.digitalWrite(8, mcp0.digitalRead(0));
+  if (!MCP23017_AVAILABLE) {
+    // Salida por el pin #powerLed
+    pinMode(powerLed, OUTPUT);
+    for (int i = 0; i < 10; i++) {
+      analogWrite(powerLed, 0);
+      delay(80);
+      analogWrite(powerLed, 1);
+      delay(80);
+    }
+
+  } else {
+
+    for (int i = 0; i < 10; i++) {
+      MCP23017_writePin(MCP_LED_IO_PIN_PA, LOW, I2C_MCP23017_ADDR);
+      delay(80);
+      MCP23017_writePin(MCP_LED_IO_PIN_PA, HIGH, I2C_MCP23017_ADDR);
+      delay(80);
+    }
+  }
 
 // -------------------------------------------------------------------
 // Configuramos el pin de Remote Pause si está habilitado
