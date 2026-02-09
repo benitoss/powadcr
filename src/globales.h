@@ -526,7 +526,8 @@ String dbgRep = "";
 // Configuracion
 // Configuracion
 tConfig *CFGHMI;
-tConfig *CFGWIFI;
+//tConfig *CFGWIFI;
+tConfig *CFGSYSTEM;
 
 //
 String POWAIP = "";
@@ -786,6 +787,10 @@ bool CMD_FROM_REMOTE_CONTROL = false;
 
 //
 bool IGNORE_DSC = false;
+
+//
+String NTPday;
+String NTPtime;
 
 // bool PZX_EJECT_RQT = false;
 

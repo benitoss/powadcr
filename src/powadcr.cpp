@@ -60,6 +60,7 @@
 #include <FS.h>
 #include <SD_MMC.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <Wire.h>
 #include <vector>
 
@@ -168,6 +169,10 @@ uint16_t USER_CONFIG_ARDUINO_LOOP_STACK_SIZE = 16384;
 #include "ESP32FtpServer.h"
 FtpServer ftpSrv;
 #endif
+
+#include "NTPClient.h"
+WiFiUDP ntpUDP;
+NTPClient timeclient(ntpUDP);
 
 #ifdef WEB_SERVER_ENABLE
 WiFiServer server(80);
@@ -386,29 +391,30 @@ tConfig *readAllParamCfg(File mFile, int maxParameters) {
   return cfgData;
 }
 
-bool loadWifiCfgFile() {
+bool loadCfgFile() {
 
   bool cfgloaded = false;
 
-  if (SD_MMC.exists("/wifi.cfg")) {
+  if (SD_MMC.exists("/powadcr.cfg")) {
+
 #ifdef DEBUGMODE
-    logln("File wifi.cfg exists");
+    logln("File powadcr.cfg exists");
 #endif
 
     char pathCfgFile[10] = {};
-    strcpy(pathCfgFile, "/wifi.cfg");
+    strcpy(pathCfgFile, "/powadcr.cfg");
 
-    File fWifi = SD_MMC.open(pathCfgFile, FILE_READ);
+    File fCfg = SD_MMC.open(pathCfgFile, FILE_READ);
     int *IP;
 
-    if (fWifi) {
+    if (fCfg) {
       // HOSTNAME = new char[32];
       // ssid = new char[64];
       // password = new char[64];
-
       char *ip1 = new char[17];
+      char *param = new char[8];
 
-      CFGWIFI = readAllParamCfg(fWifi, 9);
+      CFGSYSTEM = readAllParamCfg(fCfg, 9);
 
       // WiFi settings
       logln("");
@@ -416,86 +422,92 @@ bool loadWifiCfgFile() {
       logln("");
       logln("");
       logln("");
-      logln("WiFi settings:");
+      logln("Settings:");
       logln(
           "------------------------------------------------------------------");
       logln("");
 
       // Hostname
       strcpy(HOSTNAME,
-             (getValueOfParam(CFGWIFI[0].cfgLine, "hostname")).c_str());
+             (getValueOfParam(CFGSYSTEM[0].cfgLine, "hostname")).c_str());
       logln(HOSTNAME);
       // SSID - Wifi
-      ssid = (getValueOfParam(CFGWIFI[1].cfgLine, "ssid")).c_str();
+      ssid = (getValueOfParam(CFGSYSTEM[1].cfgLine, "ssid")).c_str();
       logln(ssid);
       // Password - WiFi
       strcpy(password,
-             (getValueOfParam(CFGWIFI[2].cfgLine, "password")).c_str());
+             (getValueOfParam(CFGSYSTEM[2].cfgLine, "password")).c_str());
       logln(password);
 
       // Local IP
-      strcpy(ip1, (getValueOfParam(CFGWIFI[3].cfgLine, "IP")).c_str());
+      strcpy(ip1, (getValueOfParam(CFGSYSTEM[3].cfgLine, "IP")).c_str());
       logln("IP: " + String(ip1));
       POWAIP = ip1;
       IP = strToIPAddress(String(ip1));
       local_IP = IPAddress(IP[0], IP[1], IP[2], IP[3]);
 
       // Subnet
-      strcpy(ip1, (getValueOfParam(CFGWIFI[4].cfgLine, "SN")).c_str());
+      strcpy(ip1, (getValueOfParam(CFGSYSTEM[4].cfgLine, "SN")).c_str());
       logln("SN: " + String(ip1));
       IP = strToIPAddress(String(ip1));
       subnet = IPAddress(IP[0], IP[1], IP[2], IP[3]);
 
       // gateway
-      strcpy(ip1, (getValueOfParam(CFGWIFI[5].cfgLine, "GW")).c_str());
+      strcpy(ip1, (getValueOfParam(CFGSYSTEM[5].cfgLine, "GW")).c_str());
       logln("GW: " + String(ip1));
       IP = strToIPAddress(String(ip1));
       gateway = IPAddress(IP[0], IP[1], IP[2], IP[3]);
 
       // DNS1
-      strcpy(ip1, (getValueOfParam(CFGWIFI[6].cfgLine, "DNS1")).c_str());
+      strcpy(ip1, (getValueOfParam(CFGSYSTEM[6].cfgLine, "DNS1")).c_str());
       logln("DNS1: " + String(ip1));
       IP = strToIPAddress(String(ip1));
       primaryDNS = IPAddress(IP[0], IP[1], IP[2], IP[3]);
 
       // DNS2
-      strcpy(ip1, (getValueOfParam(CFGWIFI[7].cfgLine, "DNS2")).c_str());
+      strcpy(ip1, (getValueOfParam(CFGSYSTEM[7].cfgLine, "DNS2")).c_str());
       logln("DNS2: " + String(ip1));
       IP = strToIPAddress(String(ip1));
       secondaryDNS = IPAddress(IP[0], IP[1], IP[2], IP[3]);
 
-      logln("Open config. WiFi-success");
+      // MCP23017
+      strcpy(param,
+             (getValueOfParam(CFGSYSTEM[8].cfgLine, "MCP23017")).c_str());
+      logln("MCP23017: " + String(param));
+      MCP23017_AVAILABLE = String(param) == "on" ? true : false;
+
       logln("");
       logln(
           "------------------------------------------------------------------");
       logln("");
       logln("");
 
-      fWifi.close();
+      fCfg.close();
       cfgloaded = true;
     }
   } else {
     // Si no existe creo uno de referencia
-    File fWifi;
-    if (!SD_MMC.exists("/wifi_ori.cfg")) {
+    File fCfg;
+    if (!SD_MMC.exists("/powadcr_ori.cfg")) {
       // fWifi.open("/wifi_ori.cfg", O_WRITE | O_CREAT);
-      fWifi = SD_MMC.open("/wifi_ori.cfg", FILE_WRITE);
+      fCfg = SD_MMC.open("/powadcr_ori.cfg", FILE_WRITE);
 
-      if (fWifi) {
-        fWifi.println("<hostname>powaDCR</hostname>");
-        fWifi.println("<ssid></ssid>");
-        fWifi.println("<password></password>");
-        fWifi.println("<IP>192.168.1.10</IP>");
-        fWifi.println("<SN>255.255.255.0</SN>");
-        fWifi.println("<GW>192.168.1.1</GW>");
-        fWifi.println("<DNS1>192.168.1.1</DNS1>");
-        fWifi.println("<DNS2>192.168.1.1</DNS2>");
+      if (fCfg) {
+        fCfg.println("<hostname>powaDCR</hostname>");
+        fCfg.println("<ssid></ssid>");
+        fCfg.println("<password></password>");
+        fCfg.println("<IP>192.168.1.10</IP>");
+        fCfg.println("<SN>255.255.255.0</SN>");
+        fCfg.println("<GW>192.168.1.1</GW>");
+        fCfg.println("<DNS1>192.168.1.1</DNS1>");
+        fCfg.println("<DNS2>192.168.1.1</DNS2>");
+        fCfg.println("<MCP23017>off</MCP23017>");
 
 #ifdef DEBUGMODE
-        logln("wifi.cfg new file created");
+        logln("powadcr.cfg new file created");
 #endif
 
-        fWifi.close();
+        fCfg.close();
 
         cfgloaded = false;
       }
@@ -504,6 +516,125 @@ bool loadWifiCfgFile() {
 
   return cfgloaded;
 }
+
+// bool loadWifiCfgFile() {
+
+//   bool cfgloaded = false;
+
+//   if (SD_MMC.exists("/powadcr.cfg")) {
+// #ifdef DEBUGMODE
+//     logln("File powadcr.cfg exists");
+// #endif
+
+//     char pathCfgFile[10] = {};
+//     strcpy(pathCfgFile, "/powadcr.cfg");
+
+//     File fWifi = SD_MMC.open(pathCfgFile, FILE_READ);
+//     int *IP;
+
+//     if (fWifi) {
+//       // HOSTNAME = new char[32];
+//       // ssid = new char[64];
+//       // password = new char[64];
+
+//       char *ip1 = new char[17];
+
+//       CFGWIFI = readAllParamCfg(fWifi, 9);
+
+//       // WiFi settings
+//       logln("");
+//       logln("");
+//       logln("");
+//       logln("");
+//       logln("");
+//       logln("WiFi settings:");
+//       logln(
+//           "------------------------------------------------------------------");
+//       logln("");
+
+//       // Hostname
+//       strcpy(HOSTNAME,
+//              (getValueOfParam(CFGWIFI[0].cfgLine, "hostname")).c_str());
+//       logln(HOSTNAME);
+//       // SSID - Wifi
+//       ssid = (getValueOfParam(CFGWIFI[1].cfgLine, "ssid")).c_str();
+//       logln(ssid);
+//       // Password - WiFi
+//       strcpy(password,
+//              (getValueOfParam(CFGWIFI[2].cfgLine, "password")).c_str());
+//       logln(password);
+
+//       // Local IP
+//       strcpy(ip1, (getValueOfParam(CFGWIFI[3].cfgLine, "IP")).c_str());
+//       logln("IP: " + String(ip1));
+//       POWAIP = ip1;
+//       IP = strToIPAddress(String(ip1));
+//       local_IP = IPAddress(IP[0], IP[1], IP[2], IP[3]);
+
+//       // Subnet
+//       strcpy(ip1, (getValueOfParam(CFGWIFI[4].cfgLine, "SN")).c_str());
+//       logln("SN: " + String(ip1));
+//       IP = strToIPAddress(String(ip1));
+//       subnet = IPAddress(IP[0], IP[1], IP[2], IP[3]);
+
+//       // gateway
+//       strcpy(ip1, (getValueOfParam(CFGWIFI[5].cfgLine, "GW")).c_str());
+//       logln("GW: " + String(ip1));
+//       IP = strToIPAddress(String(ip1));
+//       gateway = IPAddress(IP[0], IP[1], IP[2], IP[3]);
+
+//       // DNS1
+//       strcpy(ip1, (getValueOfParam(CFGWIFI[6].cfgLine, "DNS1")).c_str());
+//       logln("DNS1: " + String(ip1));
+//       IP = strToIPAddress(String(ip1));
+//       primaryDNS = IPAddress(IP[0], IP[1], IP[2], IP[3]);
+
+//       // DNS2
+//       strcpy(ip1, (getValueOfParam(CFGWIFI[7].cfgLine, "DNS2")).c_str());
+//       logln("DNS2: " + String(ip1));
+//       IP = strToIPAddress(String(ip1));
+//       secondaryDNS = IPAddress(IP[0], IP[1], IP[2], IP[3]);
+
+//       logln("Open config. WiFi-success");
+//       logln("");
+//       logln(
+//           "------------------------------------------------------------------");
+//       logln("");
+//       logln("");
+
+//       fWifi.close();
+//       cfgloaded = true;
+//     }
+//   } else {
+//     // Si no existe creo uno de referencia
+//     File fWifi;
+//     if (!SD_MMC.exists("/powadcr_ori.cfg")) {
+//       // fWifi.open("/wifi_ori.cfg", O_WRITE | O_CREAT);
+//       fWifi = SD_MMC.open("/powadcr_ori.cfg", FILE_WRITE);
+
+//       if (fWifi) {
+//         fWifi.println("<hostname>powaDCR</hostname>");
+//         fWifi.println("<ssid></ssid>");
+//         fWifi.println("<password></password>");
+//         fWifi.println("<IP>192.168.1.10</IP>");
+//         fWifi.println("<SN>255.255.255.0</SN>");
+//         fWifi.println("<GW>192.168.1.1</GW>");
+//         fWifi.println("<DNS1>192.168.1.1</DNS1>");
+//         fWifi.println("<DNS2>192.168.1.1</DNS2>");
+
+// #ifdef DEBUGMODE
+//         logln("powadcr.cfg new file created");
+// #endif
+
+//         fWifi.close();
+
+//         cfgloaded = false;
+//       }
+//     }
+//   }
+
+//   return cfgloaded;
+// }
 
 void proccesingTAP(char *file_ch) {
   // pTAP.set_SdFat32(sdf);
@@ -8012,39 +8143,62 @@ bool setupMCP23017() {
 
 void setupWifi() {
   logln("Wifi setting - loading");
-  if (loadWifiCfgFile()) {
-    // Si la conexión es correcta se actualiza el estado del HMI
-    if (wifiSetup()) {
+  // if (loadWifiCfgFile()) {
+  //  Si la conexión es correcta se actualiza el estado del HMI
+  if (wifiSetup()) {
 
-      WIFI_CONNECTED = true;
-      logln("Wifi OK");
+    WIFI_CONNECTED = true;
+    logln("Wifi OK");
 
-      // Enviamos información al menu
-      hmi.writeString("menu.wifissid.txt=\"" + String(ssid) + "\"");
-      delay(125);
-      hmi.writeString("menu.wifipass.txt=\"" + String(password) + "\"");
-      delay(125);
-      hmi.writeString("menu.wifiIP.txt=\"" + WiFi.localIP().toString() + "\"");
-      delay(125);
-      hmi.writeString("menu.wifiEn.val=1");
-      delay(125);
+    // Enviamos información al menu
+    hmi.writeString("menu.wifissid.txt=\"" + String(ssid) + "\"");
+    delay(125);
+    hmi.writeString("menu.wifipass.txt=\"" + String(password) + "\"");
+    delay(125);
+    hmi.writeString("menu.wifiIP.txt=\"" + WiFi.localIP().toString() + "\"");
+    delay(125);
+    hmi.writeString("menu.wifiEn.val=1");
+    delay(125);
 
 // FTP Server
 #ifdef FTP_SERVER_ENABLE
-      ftpSrv.begin(&SD_MMC, "powa", "powa");
+    ftpSrv.begin(&SD_MMC, "powa", "powa");
 #endif
 
 #ifdef WEB_SERVER_ENABLE
-      server.begin();
+    server.begin();
 #endif
 
-    } else {
-      WIFI_CONNECTED = false;
-      logln("Wifi FAILED");
-      hmi.writeString("menu.wifiEn.val=0");
-      delay(125);
-    }
+    hmi.writeString("statusLCD.txt=\"NTP Client running\"");
+    // NTP Client
+    timeclient.begin();
+    timeclient.setTimeOffset(3600);
+    timeclient.forceUpdate();
+    String formattedDate = timeclient.getFormattedDate();
+    logln("NTP client running");
+    logln(formattedDate);
+
+    // Extract date
+    int splitT = formattedDate.indexOf("T");
+    NTPday = formattedDate.substring(0, splitT);
+    log("DATE: ");
+    logln(NTPday);
+    // Extract time
+    NTPtime = formattedDate.substring(splitT + 1, formattedDate.length() - 1);
+    log("HOUR: ");
+    logln(NTPtime);
+
+    //
+    hmi.writeString("statusLCD.txt=\"" + NTPday + " - " + NTPtime + "\"");
+    delay(2000);
+
+  } else {
+    WIFI_CONNECTED = false;
+    logln("Wifi FAILED");
+    hmi.writeString("menu.wifiEn.val=0");
+    delay(125);
   }
+  //}
 
   delay(750);
 }
@@ -8282,9 +8436,18 @@ void setup() {
   setupAudioKit();
 
   // -------------------------------------------------------------------------
+  //
   // Configuramos acceso a la SD
+  //
   // -------------------------------------------------------------------------
   setupSDCard();
+
+  // -------------------------------------------------------------------------
+  //
+  // Cargamos la configuración del sistema
+  //
+  // -------------------------------------------------------------------------
+  loadCfgFile();
 
   // -------------------------------------------------------------------------
   //
@@ -8292,7 +8455,8 @@ void setup() {
   //
   // -------------------------------------------------------------------------
   // I2C_ScannerWire();
-  if (SD_MMC.exists("/CFG/MCP23017.enable")) {
+
+  if (MCP23017_AVAILABLE) {
     if (setupMCP23017()) {
       // Hay placa de extensión los pines son otros
       logln("MCP23017 found");
@@ -8311,7 +8475,11 @@ void setup() {
     GPIO_MSX_REMOTE_PAUSE = 19;
   }
 
+  // ---------------------------------------------------------------------------
+  //
   // Configuramos el puerto de comunicaciones con el HMI a 921600
+  //
+  // ---------------------------------------------------------------------------
   logln("Setting UART for HMI pin: RX=" + String(hmiRxD) +
         " TX=" + String(hmiTxD));
   SerialHW.begin(SerialHWDataBits, SERIAL_8N1, hmiRxD, hmiTxD);
@@ -8330,7 +8498,9 @@ void setup() {
   delay(1250);
 
   // -------------------------------------------------------------------
+  //
   // Arrancamos el indicador de power
+  //
   // -------------------------------------------------------------------
   if (!MCP23017_AVAILABLE) {
     // Salida por el pin #powerLed
@@ -8342,6 +8512,7 @@ void setup() {
       delay(80);
     }
   } else {
+    hmi.writeString("statusLCD.txt=\"MCP23017 available\"");
 
     for (int i = 0; i < 10; i++) {
       MCP23017_writePin(MCP_LED_IO_PIN_PA, LOW, I2C_MCP23017_ADDR);
