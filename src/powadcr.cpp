@@ -232,8 +232,8 @@ int32_t get_data(uint8_t *data, int32_t bytes) {
 void actuatePowerLed(uint8_t state) {
   // analogWrite(powerLed, dutyEnd);
   // mcp1.digitalWrite(8, mcp0.digitalRead(0));
-  if (!ENABLE_POWER_LED)
-    state = LOW;
+  // if (!ENABLE_POWER_LED)
+  //   state = LOW;
 
   if (!MCP23017_AVAILABLE) {
     // Salida por el pin #powerLed
@@ -8329,10 +8329,9 @@ void setup() {
   hmi.writeString("statusLCD.txt=\"POWADCR " + String(VERSION) + "\"");
   delay(1250);
 
+  // -------------------------------------------------------------------
   // Arrancamos el indicador de power
-
-  // analogWrite(powerLed, dutyEnd);
-  // mcp1.digitalWrite(8, mcp0.digitalRead(0));
+  // -------------------------------------------------------------------
   if (!MCP23017_AVAILABLE) {
     // Salida por el pin #powerLed
     pinMode(powerLed, OUTPUT);
@@ -8342,7 +8341,6 @@ void setup() {
       analogWrite(powerLed, 1);
       delay(80);
     }
-
   } else {
 
     for (int i = 0; i < 10; i++) {

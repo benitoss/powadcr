@@ -405,7 +405,7 @@ bool disable_auto_media_stop = false;
 
 // Power led
 bool POWERLED_ON = true;
-bool ENABLE_POWER_LED = false;
+bool ENABLE_POWER_LED = true;
 uint8_t POWERLED_DUTY = POWER_LED_INTENSITY;
 
 uint8_t TAPESTATE = 0;
