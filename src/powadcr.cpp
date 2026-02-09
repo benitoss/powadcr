@@ -7979,6 +7979,7 @@ bool setupMCP23017() {
 
     logln("Error I2C.");
     MCP23017_AVAILABLE = false;
+    Wire1.end();
     return false;
 
   } else {
@@ -8280,12 +8281,14 @@ void setup() {
   // -------------------------------------------------------------------------
   if (setupMCP23017()) {
     // Hay placa de extensión los pines son otros
+    logln("MCP23017 found");
     hmiTxD = 5;
     hmiRxD = 22;
     powerLed = 18;
     GPIO_MSX_REMOTE_PAUSE = 19;
   } else {
     // pines originales
+    logln("MCP23017 not found");
     hmiTxD = 23;
     hmiRxD = 18;
     powerLed = 22;
@@ -8293,10 +8296,13 @@ void setup() {
   }
 
   // Configuramos el puerto de comunicaciones con el HMI a 921600
+  logln("Setting UART for HMI pin: RX=" + String(hmiRxD) +
+        " TX=" + String(hmiTxD));
   SerialHW.begin(SerialHWDataBits, SERIAL_8N1, hmiRxD, hmiTxD);
   delay(125);
 
   // Forzamos un reinicio de la pantalla
+  logln("HMI Reset");
   hmi.writeString("rest");
   delay(125);
 

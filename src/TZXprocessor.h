@@ -4026,6 +4026,7 @@ public:
 
         if (LAST_SILENCE_DURATION == 0) {
           // Ponemos el tail de duración 1s - 3500000 TStates
+          logln("Appliying final SILENCE TAIL");
           _zxp.silence((int)round((PAUSE_TAIL_TSTATES / DfreqCPU)) * 1000);
         }
 

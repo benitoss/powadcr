@@ -203,7 +203,8 @@ int GPIO_MSX_REMOTE_PAUSE = 19;
   31250 // Sampling rate adecuado para maquinas de 8 bitsAjuste AZIMUT (Hz) -
         // 22200 Hz
 #define PAUSE_TAIL_SAMPLES (0.002 / STANDARD_SR_8_BIT_MACHINE)
-#define PAUSE_TAIL_TSTATES 3500 * 1000 // Minimo debe ser 1S (3500000 TStates)
+#define PAUSE_TAIL_TSTATES 3500 * 2000 // Minimo debe ser 1S (3500000 TStates)
+#define SILENCE_COMPENSATION_48K 0.5
 #define APPLY_ACCU_ERROR_ON_SILENCE false
 
 // #define STANDARD_SR_8_BIT_MACHINE                     31250   // Sampling
