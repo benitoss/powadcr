@@ -1140,13 +1140,15 @@ void WavRecording() {
 
   WAVFILE_PRELOAD = true;
 
-  if (taprec.convertWAVtoTAP(REC_FILENAME.c_str(), "/test.tap")) {
+  if (taprec.convertWAVtoTAP(REC_FILENAME.c_str(), "/DATA/test.tap")) {
     LAST_MESSAGE = "WAV to TAP conversion done. Saved as /test.tap";
+      logln("WAV to TAP conversion done.");
+
   } else {
     LAST_MESSAGE = "WAV to TAP conversion failed.";
+      logln("WAV to TAP conversion failed.");
   }
 
-  logln("WAV to TAP conversion done.");
 }
 
 void stopRecording() {
