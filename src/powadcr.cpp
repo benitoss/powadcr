@@ -986,6 +986,8 @@ void WavRecording() {
   // Esta rutina graba en WAV el audio que entra por LINE IN
   //
   //-----------------------------------------------------------
+  String wavfilename = wavfile.name();
+
   unsigned long progress_millis = 0;
   unsigned long progress_millis2 = 0;
   int rectime_s = 0;
@@ -998,8 +1000,7 @@ void WavRecording() {
   new_sr.sample_rate = DEFAULT_WAV_SAMPLING_RATE_REC;
   kitStream.setAudioInfo(new_sr);
 
-  // const size_t BUFFER_SIZE = 4096;
-  // int16_t buffer[BUFFER_SIZE];
+  logln("Starting WAV recording... on file " + wavfilename);
 
   EncodedAudioStream encoder(&wavfile, new WAVEncoder()); // Encoder WAV PCM
 
@@ -1008,25 +1009,20 @@ void WavRecording() {
   // decoder añade información sobre esta en este caso la fuente de entrada es
   // kitStream configurada como TX / RX
   //
-  // Ojo! Ahora nfc es una entrada como Line-in de kitStrem.
-  NumberFormatConverterStreamT<int16_t, uint8_t> nfc(
-      kitStream); // Convierte de 16-bits a 8-bits
+  // Conversor eficiente de 16b a 8b para alimentar el TZXDirectRecordingStream
 
-  MultiOutput multi(kitStream);
-  StreamCopy copier;
+  //NumberFormatConverterStreamT<int16_t, uint8_t> nfc(kitStream);
+  NumberFormatConverterStream nfc(kitStream); // true para signed->unsigned
+  nfc.begin(kitStream.audioInfo().bits_per_sample,8);
 
-  if (WAV_8BIT_MONO) {
-    hmi.writeString("tape.wavind.txt=\"WAV8\"");
-  }
-
-  // Añadimos las salidas del multi
+  // --- MultiOutput y copier para WAV ---
+  MultiOutput multi;
   multi.add(encoder);
-  // Esto lo añado para escuchar mientras grabo.
   multi.add(kitStream);
-  // Iniciamos el multi
-  multi.begin();
 
+  StreamCopy copier(multi,kitStream);
   copier.setSynchAudioInfo(true);
+  // tzxCopier.setSynchAudioInfo(true);
 
   // Esperamos a que la pantalla esté lista
   LAST_MESSAGE = "Recording to WAV - Press STOP to finish.";
@@ -1037,61 +1033,55 @@ void WavRecording() {
 
   // Agregamos las salidas al multiple
   auto ecfg = encoder.defaultConfig();
-
-  if (WAV_8BIT_MONO) {
-    // Configuramos el encoder para 22KHz, 8-bit mono
-    ecfg.sample_rate = DEFAULT_8BIT_WAV_SAMPLING_RATE_REC;
+  
+  if (WAV_8BIT_MONO) 
+  {
+    // Configuramos el encoder para 44KHz, 8-bit mono
+    ecfg.sample_rate = DEFAULT_WAV_SAMPLING_RATE_REC;
     // Esto es así porque ya el nfc se encarga de convertir a 8 bits
-    ecfg.bits_per_sample = 16;
+    ecfg.bits_per_sample = 8;
     ecfg.channels = 1; // Mono
-    // Inicializamos convertidor
-    nfc.begin();
-  } else {
+    //nfc.begin();
+    copier.begin(multi, nfc); // WAV: fuente kitStream, destinos encoder y kitStream
+  } 
+  else 
+  {
     // Configuramos el encoder para 44KHz, 16-bit stereo
     ecfg.sample_rate = DEFAULT_WAV_SAMPLING_RATE_REC;
     ecfg.bits_per_sample = 16;
     ecfg.channels = 2; // Stereo
+    copier.begin(multi, kitStream); // WAV: fuente kitStream, destinos encoder y kitStream
   }
 
   // Iniciamos el encoder con la configuración de señal
   encoder.begin(ecfg);
-
+  
   // Actuamos sobre el amplificador
   kitStream.setPAPower(ACTIVE_AMP && EN_SPEAKER);
   // Reset de variables
   STOP = false;
   WAVFILE_PRELOAD = false;
-
-  // Iniciamos el copier
-  if (WAV_8BIT_MONO) {
-    // En este caso cogemos la entrada convertida a 8 bits
-    copier.begin(encoder, nfc);
-  } else {
-    // En este caso cogemos la entrada RAW
-    copier.begin(encoder, kitStream);
-  }
+  BTNREC_PRESSED = false;
 
   // Indicamos
   hmi.writeString("tape.lblFreq.txt=\"" + String(int(ecfg.sample_rate / 1000)) +
                   "KHz\"");
+  
+  uint32_t samplesWritten = 0;
 
-  // loop de grabacion
-  while (!STOP) {
-    // Grabamos a WAV file
-    wavfilesize += copier.copy();
+  while (!STOP && !BTNREC_PRESSED) {
+    size_t samplesCopied = copier.copy();
+    wavfilesize += samplesCopied;
 
-    // Sacamos audio por la salida
+    // Actualiza tiempo y UI
     if ((millis() - progress_millis) > 1000) {
       rectime_s++;
-
       if (rectime_s > 59) {
         rectime_s = 0;
         rectime_m++;
       }
-
       progress_millis = millis();
     }
-
     if ((millis() - progress_millis2) > 1000) {
       LAST_MESSAGE = "Recording time: " +
                      ((rectime_m < 10 ? "0" : "") + String(rectime_m)) + ":" +
@@ -1125,14 +1115,8 @@ void WavRecording() {
                                                : wavfilesize / 1024) +
                   (wavfilesize > 1000000 ? " MB" : " KB") + "\"");
 
-  // Cerramos el stream
-  // copier8bWAV.end();
   copier.end();
   encoder.end();
-  multi.end();
-
-  if (WAV_8BIT_MONO)
-    nfc.end();
 
   // Cerramos el fichero WAV
   wavfile.flush();
@@ -1140,14 +1124,36 @@ void WavRecording() {
 
   WAVFILE_PRELOAD = true;
 
-  if (taprec.convertWAVtoTAP(REC_FILENAME.c_str(), "/DATA/test.tap")) {
-    LAST_MESSAGE = "WAV to TAP conversion done. Saved as /test.tap";
-      logln("WAV to TAP conversion done.");
+  // if (BTNREC_PRESSED)
+  // {
+  //   BTNREC_PRESSED = false;
+  //   // // Convertimos a TAP
+  //   // if (taprec.convertWAVtoTAP(REC_FILENAME.c_str(), ("/REC/" + wavfilename + ".tap").c_str())) 
+  //   // {
+  //   //   LAST_MESSAGE = "WAV to TAP conversion done. Saved as /REC/" + wavfilename + ".tap";
+  //   //     logln("WAV to TAP conversion done.");
 
-  } else {
-    LAST_MESSAGE = "WAV to TAP conversion failed.";
-      logln("WAV to TAP conversion failed.");
-  }
+  //   // } 
+  //   // else 
+  //   // {
+  //   //   LAST_MESSAGE = "WAV to TAP conversion failed.";
+  //   //     logln("WAV to TAP conversion failed.");
+  //   // }
+
+  //   // Convertimos a TZX
+  //   // if (taprec.convertWAVtoTZXDR(REC_FILENAME.c_str(), ("/REC/" + wavfilename + ".tzx").c_str())) 
+  //   // {
+  //   //   LAST_MESSAGE = "WAV to TZX conversion done. Saved as /REC/" + wavfilename + ".tzx";
+  //   //   logln("WAV to TZX conversion done.");
+  //   // } 
+  //   // else 
+  //   // {
+  //   //   LAST_MESSAGE = "WAV to TZX conversion failed.";
+  //   //   logln("WAV to TZX conversion failed.");
+  //   // }
+
+  //   // Retornamos
+  // }
 
 }
 
@@ -2346,7 +2352,7 @@ void RadioPlayer() {
     // Gestión de botones FFWD/RWIND
     if (FFWIND || RWIND) {
       dialIndicator(false);
-
+      bufferw = 0; 
       // ✅ CORRECCIÓN DEFINITIVA: Parada y reinicio completo del pipeline de
       // audio
       if (PLAY) {
@@ -2397,53 +2403,24 @@ void RadioPlayer() {
       playerState = 1;
     }
 
-    // // ✅ CORRECCIÓN DEFINITIVA: Reiniciar el decodificador
-    // if (PLAY)
-    // {
-    //     // 1. Detener la tarea de red para que no escriba más en el buffer.
-    //     taskParams.running = false;
-    //     vTaskDelay(pdMS_TO_TICKS(100)); // Dar tiempo a que la tarea termine.
-
-    //     // 2. Detener y limpiar el pipeline de audio por completo.
-    //     decodedStream.end();
-    //     kitStream.end(); // Detiene el DMA de la tarjeta de sonido.
-    // }
-
-    // radioBuffer.clear();
-    // isBuffering = true;
-
-    // currentRadioStation = nextRadioStation(PATH_FILE_TO_LOAD, radioName,
-    // radioUrlBuffer, sizeof(radioUrlBuffer), FFWIND);
-    // updateDialIndicator(currentRadioStation);
-
-    // if (PLAY) {
-    //     LAST_MESSAGE = "Tuning to " + radioName + "...";
-    //     strcpy(taskParams.url_buffer, radioUrlBuffer);
-    //     taskParams.new_url = true;
-    // } else {
-    //     LAST_MESSAGE = "Select: " + radioName;
-    //     taskParams.new_url = false;
-    // }
-
-    // FFWIND = RWIND = false;
-    // statusSignalOk = false;
-    // playerState = 1;
-    // }
-
     // ✅ GESTIÓN DEL EXPLORADOR DE EMISORAS (REINTEGRADO)
     if (BB_OPEN || BB_UPDATE) {
-      while (BB_OPEN || BB_UPDATE) {
+      while (BB_OPEN || BB_UPDATE) 
+      {
         hmi.openBlockMediaBrowser(audiolist);
       }
     } else if (UPDATE_HMI || UPDATE) {
-      if (BLOCK_SELECTED > 0 && BLOCK_SELECTED <= TOTAL_BLOCKS) {
+      if (BLOCK_SELECTED > 0 && BLOCK_SELECTED <= TOTAL_BLOCKS) 
+      {
         int currentPointer = BLOCK_SELECTED - 1;
         currentRadioStation = nextRadioStation(
             PATH_FILE_TO_LOAD, radioName, radioUrlBuffer,
             sizeof(radioUrlBuffer), true, currentPointer, true);
 
         // Si ya estábamos reproduciendo, cambiamos de emisora
-        if (PLAY) {
+        if (PLAY) 
+        {
+          bufferw = 0;
           dialIndicator(false);
 
           // ✅ APLICAR LA MISMA LÓGICA DE PARADA Y REINICIO AQUÍ
@@ -2479,21 +2456,6 @@ void RadioPlayer() {
           playerState = 1;
         }
 
-        // if (PLAY) {
-        //     dialIndicator(false);
-        //     // Reiniciar el decodificador también aquí
-        //     decodedStream.end();   // Finaliza y limpia el decodificador
-        //     decodedStream.begin(); // Reinicia el decodificador para el nuevo
-        //     stream
-
-        //     radioBuffer.clear();
-        //     kitStream.flush();     // Vacía el búfer de la tarjeta de sonido
-        //     isBuffering = true;
-
-        //     strcpy(taskParams.url_buffer, radioUrlBuffer);
-        //     taskParams.new_url = true;
-        //     playerState = 1;
-        // }
       }
       UPDATE_HMI = false;
       UPDATE = false;
@@ -4989,84 +4951,6 @@ void recCondition() {
   //
   AUTO_STOP = false;
 }
-
-// void remDetection()
-// {
-//   // if (MCP23017_AVAILABLE)
-//   // {
-//   //   // Leemos el estado del MCP23017
-//   //   if (REM_ENABLE)
-//   //   {
-//   //     //logln("Check if REM is active");
-
-//   //     if (MCP23017_readPin(MCP_REM_IO_PIN_PB,I2C_MCP23017_ADDR) == LOW &&
-//   !REM_DETECTED)
-//   //     {
-//   //       // Informamos del REM detectado
-//   //       hmi.writeString("tape.wavind.txt=\"REM\"");
-//   //       logln("REM detected");
-//   //       // Flag del REM a true
-//   //       REM_DETECTED = true;
-//   //     }
-//   //     else if (MCP23017_readPin(MCP_REM_IO_PIN_PB,I2C_MCP23017_ADDR) !=
-//   LOW && REM_DETECTED)
-//   //     {
-//   //         // Recuperamos el mensaje original
-//   //         if (WAV_8BIT_MONO)
-//   //         {
-//   //           hmi.writeString("tape.wavind.txt=\"WAV8\"");
-//   //         }
-//   //         else
-//   //         {
-//   //           hmi.writeString("tape.wavind.txt=\"\"");
-//   //         }
-
-//   //         logln("REM released");
-//   //         // Reseteamos el flag
-//   //         REM_DETECTED = false;
-//   //     }
-//   //   }
-//   // }
-//   // else
-//   // {
-//           if (REM_ENABLE)
-//           {
-//           //logln("Check if REM is active");
-
-//           if (digitalRead(GPIO_MSX_REMOTE_PAUSE) == LOW && !REM_DETECTED)
-//           {
-//             // Informamos del REM detectado
-//             hmi.writeString("tape.wavind.txt=\"REM\"");
-//             logln("REM detected");
-
-//             // Retardo de arranque de motor
-//             delay(1000/50);
-
-//             // Flag del REM a true
-//             REM_DETECTED = true;
-//           }
-//           else if (digitalRead(GPIO_MSX_REMOTE_PAUSE) != LOW && REM_DETECTED)
-//           {
-//               // Recuperamos el mensaje original
-//               if (WAV_8BIT_MONO)
-//               {
-//                 hmi.writeString("tape.wavind.txt=\"WAV8\"");
-//               }
-//               else
-//               {
-//                 hmi.writeString("tape.wavind.txt=\"\"");
-//               }
-
-//               logln("REM released");
-//               // Retardo de parada de motor
-//               delay(1000/50);
-
-//               // Reseteamos el flag
-//               REM_DETECTED = false;
-//           }
-//         }
-//   // }
-// }
 
 void tapeControl() {
   // Estados de funcionamiento del TAPE

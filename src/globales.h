@@ -673,6 +673,7 @@ bool BTN_PLAY_PRESSED = false;
 
 bool PAUSE = true;
 bool REC = false;
+bool BTNREC_PRESSED = false;
 bool STOP = false;
 bool AUTO_STOP = false;
 bool AUTO_PAUSE = false;
@@ -787,6 +788,8 @@ bool CMD_FROM_REMOTE_CONTROL = false;
 
 //
 bool IGNORE_DSC = false;
+//
+bool CONVERT_TO_TZXDR = true;
 
 //
 String NTPday;
@@ -1274,7 +1277,7 @@ void remDetection() {
     } else if (digitalRead(GPIO_MSX_REMOTE_PAUSE) != LOW && REM_DETECTED) {
       // Recuperamos el mensaje original
       if (WAV_8BIT_MONO) {
-        myNex.writeStr("tape.wavind.txt", "WAV8");
+        myNex.writeStr("tape.wavind.txt", "MONO");
       } else {
         myNex.writeStr("tape.wavind.txt", "");
       }

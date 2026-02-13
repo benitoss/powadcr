@@ -66,6 +66,8 @@ void resetRecordingState() {}
 
 #pragma once
 
+//#include <Stream.h>
+
 class TAPrecorder {
 
 public:
@@ -810,62 +812,77 @@ public:
           lastCrossIndex = processedSamples;
 
           // --- State Machine ---
-          switch (state) {
-          case SEARCH_LEADER:
-            if (pulseWidth >= MIN_LEADER && pulseWidth <= MAX_LEADER) {
-              leaderPulseCount++;
-              if (leaderPulseCount > maxLeaderFound)
-                maxLeaderFound = leaderPulseCount;
-            } else if (leaderPulseCount > 200 && pulseWidth <= MAX_SYNC_1) {
-              state = WAIT_SYNC_2;
-              logln("Sync1 found after " + String(leaderPulseCount) +
-                    " leader pulses.");
-            } else {
-              leaderPulseCount = 0;
-            }
-            break;
-
-          case WAIT_SYNC_2:
-            blockBuffer.clear();
-            currentByte = 0;
-            bitsRead = 0;
-            haveFirstPulse = false;
-            state = READ_DATA;
-            break;
-
-          case READ_DATA:
-            if (pulseWidth > TIMEOUT) {
-              // End of Block
-              if (blockBuffer.size() > 0) {
-                uint16_t len = blockBuffer.size();
-                tapFile.write((uint8_t *)&len, 2);
-                tapFile.write(blockBuffer.data(), len);
-                logln("Block Saved: " + String(len) + " bytes");
-                blocksFound++;
-              }
-              state = SEARCH_LEADER;
-              leaderPulseCount = 0;
-            } else {
-              if (!haveFirstPulse) {
-                prevPulseWidth = pulseWidth;
-                haveFirstPulse = true;
+          switch (state) 
+          {
+            case SEARCH_LEADER:
+            {
+              if (pulseWidth >= MIN_LEADER && pulseWidth <= MAX_LEADER) {
+                leaderPulseCount++;
+                if (leaderPulseCount > maxLeaderFound)
+                  maxLeaderFound = leaderPulseCount;
+              } else if (leaderPulseCount > 200 && pulseWidth <= MAX_SYNC_1) {
+                state = WAIT_SYNC_2;
+                logln("Sync1 found after " + String(leaderPulseCount) +
+                      " leader pulses.");
               } else {
-                int fullPeriod = prevPulseWidth + pulseWidth;
-                haveFirstPulse = false;
-
-                currentByte <<= 1;
-                if (fullPeriod > BIT_THRESHOLD) {
-                  currentByte |= 1;
+                leaderPulseCount = 0;
+              }
+              break;
+            }
+            
+            case WAIT_SYNC_2:
+            {
+              blockBuffer.clear();
+              currentByte = 0;
+              bitsRead = 0;
+              haveFirstPulse = false;
+              state = READ_DATA;
+              break;
+            }
+          
+            case READ_DATA:
+            {
+              if (pulseWidth > TIMEOUT) 
+              {
+                // End of Block
+                if (blockBuffer.size() > 0) {
+                  uint16_t len = blockBuffer.size();
+                  tapFile.write((uint8_t *)&len, 2);
+                  tapFile.write(blockBuffer.data(), len);
+                  logln("Block Saved: " + String(len) + " bytes");
+                  blocksFound++;
                 }
-                bitsRead++;
-                if (bitsRead == 8) {
-                  blockBuffer.push_back(currentByte);
-                  currentByte = 0;
-                  bitsRead = 0;
+                state = SEARCH_LEADER;
+                leaderPulseCount = 0;
+              } 
+              else 
+              {
+                if (!haveFirstPulse) 
+                {
+                  prevPulseWidth = pulseWidth;
+                  haveFirstPulse = true;
+                }
+                else 
+                {
+                  int fullPeriod = prevPulseWidth + pulseWidth;
+                  haveFirstPulse = false;
+
+                  currentByte <<= 1;
+                  if (fullPeriod > BIT_THRESHOLD) 
+                  {
+                    currentByte |= 1;
+                  }
+                  bitsRead++;
+                  if (bitsRead == 8) 
+                  {
+                    blockBuffer.push_back(currentByte);
+                    currentByte = 0;
+                    bitsRead = 0;
+                  }
                 }
               }
+              break;
             }
-            break;
           }
         }
         lastSample = sample;
@@ -895,6 +912,158 @@ public:
     tapFile.close();
     LAST_MESSAGE = "Conversion Done";
     logln("Conversion Completed.");
+    return true;
+  }
+
+  /**
+   * Convierte un archivo WAV a un archivo TZX con un bloque Direct Recording (ID 0x15).
+   * El archivo WAV debe ser PCM, 8 o 16 bits, mono.
+   * El archivo TZX generado contendrá un solo bloque Direct Recording.
+   *
+   * @param wavPath Ruta del archivo WAV de entrada
+   * @param tzxPath Ruta del archivo TZX de salida
+   * @return true si la conversión fue exitosa, false en caso de error
+   */
+  bool convertWAVtoTZXDR(const char *wavPath, const char *tzxPath) {
+    logln("Converting WAV to TZX Direct Recording block...");
+    LAST_MESSAGE = "Converting to TZX Direct Recording";
+
+    File wavFile = SD_MMC.open(wavPath, FILE_READ);
+    if (!wavFile) {
+      logln("WAV open failed");
+      return false;
+    }
+
+    // --- Leer cabecera WAV ---
+    struct WAVHeader {
+      char riff[4];
+      uint32_t chunkSize;
+      char wave[4];
+      char fmt[4];
+      uint32_t subchunk1Size;
+      uint16_t audioFormat;
+      uint16_t numChannels;
+      uint32_t sampleRate;
+      uint32_t byteRate;
+      uint16_t blockAlign;
+      uint16_t bitsPerSample;
+    };
+    WAVHeader header;
+    wavFile.read((uint8_t *)&header, sizeof(WAVHeader));
+
+    if (strncmp(header.riff, "RIFF", 4) != 0 || strncmp(header.wave, "WAVE", 4) != 0) {
+      logln("Invalid WAV Header");
+      wavFile.close();
+      return false;
+    }
+    if (header.numChannels != 1 || (header.bitsPerSample != 8 && header.bitsPerSample != 16)) {
+      logln("Only mono 8/16-bit WAV supported");
+      wavFile.close();
+      return false;
+    }
+
+    // Buscar chunk 'data'
+    uint32_t dataSize = 0;
+    while (wavFile.available()) {
+      char chunkId[4];
+      wavFile.read((uint8_t *)chunkId, 4);
+      uint32_t chunkSize;
+      wavFile.read((uint8_t *)&chunkSize, 4);
+      if (strncmp(chunkId, "data", 4) == 0) {
+        dataSize = chunkSize;
+        break;
+      } else {
+        wavFile.seek(wavFile.position() + chunkSize);
+      }
+    }
+    if (dataSize == 0) {
+      logln("No data chunk found");
+      wavFile.close();
+      return false;
+    }
+
+    File tzxFile = SD_MMC.open(tzxPath, FILE_WRITE);
+    if (!tzxFile) {
+      LAST_MESSAGE = "Failed to open TZX file";
+      logln("Failed to open TZX file for writing");
+      wavFile.close();
+      return false;
+    }
+
+    // --- Escribir cabecera TZX ---
+    tzxFile.write((const uint8_t *)"ZXTape!", 7);
+    tzxFile.write(0x1A);
+    tzxFile.write(0x01); // Major version
+    tzxFile.write(0x20); // Minor version
+
+    // --- Preparar bloque Direct Recording (ID 0x15) ---
+    tzxFile.write(0x15); // ID
+
+    uint32_t blockLen = 0x0A + dataSize; // longitud del bloque (sin el ID)
+    tzxFile.write((uint8_t *)&blockLen, 3); // 3 bytes, little endian
+
+    // Duración de cada bit en T-states (aprox. para ZX Spectrum)
+    uint16_t tstates = (uint16_t)(3500000.0 / header.sampleRate); // 3.5MHz clock
+    tzxFile.write((uint8_t *)&tstates, 2);
+
+    tzxFile.write(header.bitsPerSample); // Bits por muestra
+
+    // Número de muestras (4 bytes, little endian)
+    uint32_t numSamples = dataSize / (header.bitsPerSample / 8);
+    tzxFile.write((uint8_t *)&numSamples, 4);
+
+    tzxFile.write(0x80); // Valor de nivel alto (por defecto 0x80)
+
+    // --- Escribir datos PCM ---
+    // const size_t BUF_SIZE = 8192; // Buffer grande para acelerar E/S
+    // uint8_t buf[BUF_SIZE];
+    // uint32_t bytesLeft = dataSize;
+    // uint32_t bytesProcessed = 0;
+    // int lastPercent = -1;
+    // while (bytesLeft > 0) {
+    //   size_t toRead = (bytesLeft > BUF_SIZE) ? BUF_SIZE : bytesLeft;
+    //   wavFile.read(buf, toRead);
+    //   tzxFile.write(buf, toRead);
+    //   bytesLeft -= toRead;
+    //   bytesProcessed += toRead;
+    //   int percent = (int)((bytesProcessed * 100ULL) / dataSize);
+    //   // Solo actualiza cada 10% para minimizar impacto en HMI
+    //   if (percent != lastPercent && percent % 10 == 0) {
+    //     LAST_MESSAGE = String("TZX DR: ") + String(percent) + "%";
+    //     lastPercent = percent;
+    //   }
+    // }
+
+    // --- Escribir datos PCM ---
+    const size_t BUF_SAMPLES = 8192; // 8 Kbytes para 16 bits
+    int16_t buf16[BUF_SAMPLES];
+    uint8_t buf8[BUF_SAMPLES];
+    uint32_t bytesLeft = dataSize;
+    uint32_t bytesProcessed = 0;
+    int lastPercent = -1;
+    while (bytesLeft > 0) {
+        size_t toRead = (bytesLeft > BUF_SAMPLES * 2) ? BUF_SAMPLES * 2 : bytesLeft;
+        
+        wavFile.read((uint8_t*)buf16, toRead);
+        size_t samplesRead = toRead / 2;
+        for (size_t i = 0; i < samplesRead; i++) {
+            buf8[i] = (uint8_t)(((int32_t)buf16[i] + 32768) >> 8); // 16b->8b
+        }
+        tzxFile.write(buf8, samplesRead);
+        bytesLeft -= toRead;
+        bytesProcessed += toRead;
+        int percent = (int)((bytesProcessed * 100ULL) / dataSize);
+        // Solo actualiza cada 10% para minimizar impacto en HMI
+        if (percent != lastPercent) {
+          LAST_MESSAGE = String("TZX DR: ") + String(percent) + "%";
+          lastPercent = percent;
+        }        
+    }    
+
+    wavFile.close();
+    tzxFile.close();
+    LAST_MESSAGE = "TZX Direct Recording conversion done";
+    logln("TZX Direct Recording conversion completed.");
     return true;
   }
 

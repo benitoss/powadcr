@@ -2637,6 +2637,7 @@ class HMI
             REC = true;
             ABORT = false;
             EJECT = false;
+            BTNREC_PRESSED = true;
           }
           
         }
