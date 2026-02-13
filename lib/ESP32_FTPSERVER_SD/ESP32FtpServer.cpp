@@ -749,17 +749,25 @@ boolean FtpServer::doRetrieve() {
 unsigned long count = 0;
 
 boolean FtpServer::doStore() {
-  if ( data.connected()) {
-    unsigned long ms0 = millis();
+  // Primero verificar si hay datos disponibles incluso si la conexión se cerró
+  if ( data.connected() || data.available() > 0) {
     int16_t nb = data.readBytes((uint8_t*) buf, FTP_BUF_SIZE );
     if ( nb > 0 ) {
       size_t written = file.write((uint8_t*) buf, nb );
-      bytesTransfered += nb;
-    } else {
-      Serial.println(".");
+      // Verificar que se escribieron todos los bytes
+      if (written != nb) {
+        Serial.println("FTP ERROR: Write incomplete! Expected " + String(nb) + ", wrote " + String(written));
+      }
+      bytesTransfered += written;
+      // Flush periódico para evitar pérdida de datos
+      if (bytesTransfered % (FTP_BUF_SIZE * 4) < FTP_BUF_SIZE) {
+        file.flush();
+      }
     }
     return true;
   }
+  // Asegurar flush final antes de cerrar
+  file.flush();
   closeTransfer();
   return false;
 }
