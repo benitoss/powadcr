@@ -56,7 +56,7 @@
 // --------------------------------------------------------------
 // Configuración de la versión del software
 // --------------------------------------------------------------
-#define VERSION "v1.0r7.8"
+#define VERSION "v1.0r7.9"
 
 // --------------------------------------------------------------
 // Configuración de memoria optimizada
@@ -354,3 +354,11 @@ bool TEST_LINE_IN_OUT = false;
 // <GW>192.168.2.1</GW>
 // <DNS1>192.168.2.1</DNS1>
 // <DNS2>192.168.2.1</DNS2>
+
+// Para el sistema de date / time de SD_MMC
+#ifndef FS_DATE
+#define FS_DATE(year, month, day)   (((year - 1980) << 9) | ((month) << 5) | (day))
+#endif
+#ifndef FS_TIME
+#define FS_TIME(hour, min, sec)     (((hour) << 11) | ((min) << 5) | ((sec) >> 1))
+#endif

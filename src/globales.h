@@ -792,8 +792,18 @@ bool IGNORE_DSC = false;
 bool CONVERT_TO_TZXDR = true;
 
 //
-String NTPday;
-String NTPtime;
+const char* NTPSERVER = "pool.ntp.org";
+uint8_t TIMEZONE = 1; // GMT+1
+bool SUMMERTIME = true;
+
+uint8_t NTPhour = 0;
+uint8_t NTPminute = 0;
+uint8_t NTPsecond = 0;
+uint16_t NTPyear = 0;
+uint8_t NTPmonth = 0;
+uint8_t NTPday = 0;
+
+struct tm TIMEINFO;
 
 // bool PZX_EJECT_RQT = false;
 
@@ -1290,4 +1300,13 @@ void remDetection() {
       REM_DETECTED = false;
     }
   }
+}
+
+// Descompone NTPdate ("YYYY-MM-DD") y NTPtime ("HH:MM:SS") y actualiza las variables globales
+
+// Devuelve un String con la fecha y hora en formato 00/00/0000 - 00:00:00
+inline String getFormattedDateTime(uint8_t day, uint8_t month, uint16_t year, uint8_t hour, uint8_t minute, uint8_t second) {
+    char buf[25];
+    snprintf(buf, sizeof(buf), "%02u / %02u / %04u - %02u:%02u:%02u", day, month, year, hour, minute, second);
+    return String(buf);
 }

@@ -58,14 +58,20 @@
 
 #include <Arduino.h>
 #include <FS.h>
+#include <ESP32Time.h>
 #include <SD_MMC.h>
 #include <WiFi.h>
-#include <WiFiUdp.h>
+//#include <WiFiUdp.h>
 #include <Wire.h>
 #include <vector>
 
 #include "EasyNextionLibrary.h"
 #include "esp32-hal-psram.h"
+ESP32Time rtc;
+
+//#include "NTPClient.h"
+// WiFiUDP ntpUDP;
+// NTPClient timeclient(ntpUDP);
 
 // Librerias (mantener este orden)
 //   -- En esta se encuentran las variables globales a todo el proyecto
@@ -83,6 +89,7 @@ EasyNex myNex(SerialHW);
 //
 #include "AudioTools.h"
 #include "AudioTools/AudioLibs/AudioBoardStream.h"
+
 
 // Definimos la placa de audio
 #include "AudioTools/AudioCodecs/CodecFLACFoxen.h"
@@ -102,6 +109,7 @@ EasyNex myNex(SerialHW);
 DriverPins powadcr_pins;
 AudioBoard powadcr_board(audio_driver::AudioDriverES8388, powadcr_pins);
 AudioBoardStream kitStream(powadcr_board);
+
 
 #include "HMI.h"
 HMI hmi;
@@ -170,9 +178,7 @@ uint16_t USER_CONFIG_ARDUINO_LOOP_STACK_SIZE = 16384;
 FtpServer ftpSrv;
 #endif
 
-#include "NTPClient.h"
-WiFiUDP ntpUDP;
-NTPClient timeclient(ntpUDP);
+
 
 #ifdef WEB_SERVER_ENABLE
 WiFiServer server(80);
@@ -414,7 +420,7 @@ bool loadCfgFile() {
       char *ip1 = new char[17];
       char *param = new char[8];
 
-      CFGSYSTEM = readAllParamCfg(fCfg, 9);
+      CFGSYSTEM = readAllParamCfg(fCfg, 100);
 
       // WiFi settings
       logln("");
@@ -476,6 +482,25 @@ bool loadCfgFile() {
       logln("MCP23017: " + String(param));
       MCP23017_AVAILABLE = String(param) == "on" ? true : false;
 
+      // NTP-SERVER
+      strcpy(param,
+             (getValueOfParam(CFGSYSTEM[9].cfgLine, "NTPSERVER")).c_str());
+      logln("NTP-SERVER: " + String(param));
+      NTPSERVER = param;
+
+      // NTP-TIMEZONE
+      strcpy(param,
+             (getValueOfParam(CFGSYSTEM[10].cfgLine, "TIMEZONE")).c_str());
+      TIMEZONE = String(param).toInt();
+      logln("TIMEZONE: " + String(TIMEZONE));
+
+      // NTP-SUMMER TIME
+      strcpy(param,
+             (getValueOfParam(CFGSYSTEM[11].cfgLine, "SUMMERTIME")).c_str());
+      logln("SUMMERTIME: " + String(param));
+      SUMMERTIME = String(param).toInt();
+
+
       logln("");
       logln(
           "------------------------------------------------------------------");
@@ -502,6 +527,9 @@ bool loadCfgFile() {
         fCfg.println("<DNS1>192.168.1.1</DNS1>");
         fCfg.println("<DNS2>192.168.1.1</DNS2>");
         fCfg.println("<MCP23017>off</MCP23017>");
+        fCfg.println("<NTPSERVER>pool.ntp.org</NTPSERVER>");
+        fCfg.println("<TIMEZONE>0</TIMEZONE>");
+        fCfg.println("<SUMMERTIME>off</SUMMERTIME>");
 
 #ifdef DEBUGMODE
         logln("powadcr.cfg new file created");
@@ -1002,6 +1030,7 @@ void WavRecording() {
 
   logln("Starting WAV recording... on file " + wavfilename);
 
+
   EncodedAudioStream encoder(&wavfile, new WAVEncoder()); // Encoder WAV PCM
 
   // El conversor tiene que actuar sobre la fuente (audio en RAW), si actua
@@ -1012,13 +1041,17 @@ void WavRecording() {
   // Conversor eficiente de 16b a 8b para alimentar el TZXDirectRecordingStream
 
   //NumberFormatConverterStreamT<int16_t, uint8_t> nfc(kitStream);
-  NumberFormatConverterStream nfc(kitStream); // true para signed->unsigned
-  nfc.begin(kitStream.audioInfo().bits_per_sample,8);
+  //  NumberFormatConverterStream nfc(kitStream); // true para signed->unsigned
+  AudioInfo info(DEFAULT_WAV_SAMPLING_RATE_REC, 1, 16);
+  AudioInfo infoStereo(DEFAULT_WAV_SAMPLING_RATE_REC, 2, 16);
+  HexDumpOutput out(Serial);
+  NumberFormatConverterStreamT<int16_t, uint8_t> nfc((int16_t)kitStream);
 
-  // --- MultiOutput y copier para WAV ---
+    // --- MultiOutput y copier para WAV ---
   MultiOutput multi;
   multi.add(encoder);
   multi.add(kitStream);
+  multi.add(out);
 
   StreamCopy copier(multi,kitStream);
   copier.setSynchAudioInfo(true);
@@ -1036,25 +1069,33 @@ void WavRecording() {
   
   if (WAV_8BIT_MONO) 
   {
-    // Configuramos el encoder para 44KHz, 8-bit mono
-    ecfg.sample_rate = DEFAULT_WAV_SAMPLING_RATE_REC;
-    // Esto es así porque ya el nfc se encarga de convertir a 8 bits
-    ecfg.bits_per_sample = 8;
-    ecfg.channels = 1; // Mono
-    //nfc.begin();
+    // Entrada del convertidor
+    nfc.setStream(kitStream);
+    // Salida del convertidor
+    nfc.setOutput(out);
+    // Configuracion del convertidor
+    nfc.setAudioInfo(info);
+    // Inicializamos
+    nfc.begin();
+    // Inicializamos el encoder
+    encoder.begin(nfc.audioInfoOut());
+    // Configuramos el copier
     copier.begin(multi, nfc); // WAV: fuente kitStream, destinos encoder y kitStream
+    // Inicializamos el HEXdump
+    out.begin();
+
   } 
   else 
   {
     // Configuramos el encoder para 44KHz, 16-bit stereo
-    ecfg.sample_rate = DEFAULT_WAV_SAMPLING_RATE_REC;
-    ecfg.bits_per_sample = 16;
-    ecfg.channels = 2; // Stereo
+    // ecfg.sample_rate = DEFAULT_WAV_SAMPLING_RATE_REC;
+    // ecfg.bits_per_sample = 16;
+    // ecfg.channels = 2; // Stereo
     copier.begin(multi, kitStream); // WAV: fuente kitStream, destinos encoder y kitStream
+    encoder.begin(infoStereo);
   }
 
   // Iniciamos el encoder con la configuración de señal
-  encoder.begin(ecfg);
   
   // Actuamos sobre el amplificador
   kitStream.setPAPower(ACTIVE_AMP && EN_SPEAKER);
@@ -1117,6 +1158,8 @@ void WavRecording() {
 
   copier.end();
   encoder.end();
+  out.end();
+  nfc.end();
 
   // Cerramos el fichero WAV
   wavfile.flush();
@@ -7688,188 +7731,175 @@ void Task0code(void *pvParameters) {
   int mi = 0;
   int se = 0;
   int tScrRfsh = 125;
+  int timeRTC = 2000;
   // int tRotateNameRfsh = 200;
   // ✅ AÑADE UN TEMPORIZADOR PARA MEDIR LA PILA
   unsigned long stackCheckTime = millis();
-  for (;;) {
+  for (;;) 
+  {
 
     hmi.readUART();
 
-// Control del FTP
-#ifdef FTP_SERVER_ENABLE
-    if (!IRADIO_EN && WIFI_ENABLE && WIFI_CONNECTED) {
-      ftpSrv.handleFTP();
-    }
-#endif
+    // Control del FTP
+    #ifdef FTP_SERVER_ENABLE
+        if (!IRADIO_EN && WIFI_ENABLE && WIFI_CONNECTED) {
+          ftpSrv.handleFTP();
+        }
+    #endif
 
-#ifdef WEB_SERVER_ENABLE
-    WiFiClient client = server.available();
-    if (client) {
-      handleWebClient(client);
-    }
-#endif
+    #ifdef WEB_SERVER_ENABLE
+        WiFiClient client = server.available();
+        if (client) {
+          handleWebClient(client);
+        }
+    #endif
 
-#ifdef DEBUGMODE
-    // Comprobamos la pila cada 10 segundos
-    if (millis() - stackCheckTime > 5000) { // Cada 5 segundos
-      UBaseType_t hwm_core0 = uxTaskGetStackHighWaterMark(Task0);
-      UBaseType_t hwm_core1 = uxTaskGetStackHighWaterMark(Task1);
+    #ifdef DEBUGMODE
+        // Comprobamos la pila cada 10 segundos
+        if (millis() - stackCheckTime > 5000) { // Cada 5 segundos
+          UBaseType_t hwm_core0 = uxTaskGetStackHighWaterMark(Task0);
+          UBaseType_t hwm_core1 = uxTaskGetStackHighWaterMark(Task1);
 
-      logln("Stack HWM Core 0 (HMI): " + String(hwm_core0 * 4 / 1024) +
-            " KB free");
-      logln("Stack HWM Core 1 (Tape): " + String(hwm_core1 * 4 / 1024) +
-            " KB free");
+          logln("Stack HWM Core 0 (HMI): " + String(hwm_core0 * 4 / 1024) +
+                " KB free");
+          logln("Stack HWM Core 1 (Tape): " + String(hwm_core1 * 4 / 1024) +
+                " KB free");
 
-      stackCheckTime = millis();
-    }
-#endif
+          stackCheckTime = millis();
+        }
+    #endif
 
-    // Control por botones
-    // buttonsControl();
+        // Control por botones
+        // buttonsControl();
 
-    // Esto lo ponemos para evitar errores en la lectura del puerto serie
-    delay(25);
+        // Esto lo ponemos para evitar errores en la lectura del puerto serie
+        delay(25);
 
-    // esp_task_wdt_reset();
+        // esp_task_wdt_reset();
 
-#ifndef DEBUGMODE
+    #ifndef DEBUGMODE
 
-    if (REC) {
-      tScrRfsh = 250;
-    } else {
-      tScrRfsh = 125;
-    }
+        if (REC) {
+          tScrRfsh = 250;
+        } else {
+          tScrRfsh = 125;
+        }
 
-    // if (PWM_POWER_LED)
-    // {
-    //   if ((millis() - startTime4) > 35)
-    //   {
-    //     // Timer para el PWM del powerled
-    //     startTime4 = millis();
-
-    //     if (!REC)
-    //     {
-    //       if (plduty > POWERLED_DUTY)
-    //       {
-    //         chduty=-1;
-    //       }
-    //       else if (plduty < 1)
-    //       {
-    //         chduty=1;
-    //       }
-    //       //
-    //       plduty += chduty;
-    //       actuatePowerLed(powerLed,plduty);
-    //     }
-    //   }
-    // }
-    // else
-    // {
-    // Lo dejamos fijo a low power
-    if (!REC) {
-      actuatePowerLed(1);
-    }
-    // else
-    // {
-    //   //logln("REC mode - Power LED fixed");
-    // }
-    // }
-
-    if ((millis() - startTime3) > 500) {
-      // Timer para el powerLed / recording led indicator
-      startTime3 = millis();
-
-      if (REC && !IRADIO_EN) {
-        // Modo grabacion
-        if (!powerLedFixed) {
-          statusPoweLed = !statusPoweLed;
-          actuatePowerLed(statusPoweLed);
-        } else if (!IRADIO_EN) {
+        // Lo dejamos fijo a low power
+        if (!REC) {
           actuatePowerLed(1);
         }
-      }
-    }
 
-    if ((millis() - startTime) > tScrRfsh) {
-      startTime = millis();
-      stackFreeCore1 = uxTaskGetStackHighWaterMark(Task1);
-      stackFreeCore0 = uxTaskGetStackHighWaterMark(Task0);
-      hmi.updateInformationMainPage();
-    }
+        if ((millis() - startTime3) > 500) {
+          // Timer para el powerLed / recording led indicator
+          startTime3 = millis();
 
-    if (rotate_enable || ENABLE_ROTATE_FILEBROWSER) {
-      if ((millis() - startTime2) > tRotateNameRfsh &&
-          (FILE_LOAD.length() > windowNameLength ||
-           ((ROTATE_FILENAME.length() > windowNameLengthFB)) *
-               ENABLE_ROTATE_FILEBROWSER)) {
-        // Capturamos el texto con tamaño de la ventana
-        if ((TYPE_FILE_LOAD == "WAV" || TYPE_FILE_LOAD == "MP3" ||
-             TYPE_FILE_LOAD == "FLAC")) {
-          hmi.writeString("name.txt=\"" +
-                          FILE_LOAD.substring(
-                              posRotateName, posRotateName + windowNameLength) +
-                          "\"");
-        } else {
-          if (!ENABLE_ROTATE_FILEBROWSER) {
-            PROGRAM_NAME = FILE_LOAD.substring(
-                posRotateName, posRotateName + windowNameLength);
-          } else {
-            hmi.writeString(
-                "file.path.txt=\"" +
-                ROTATE_FILENAME.substring(posRotateName,
-                                          posRotateName + windowNameLengthFB) +
-                "\"");
-          }
-        }
-        // Lo rotamos segun el sentido que toque
-        posRotateName += moveDirection;
-        // Comprobamos limites para ver si hay que cambiar sentido
-        if (!ENABLE_ROTATE_FILEBROWSER) {
-          if (posRotateName > (FILE_LOAD.length() - windowNameLength)) {
-            moveDirection = -1;
-          }
-
-          if (posRotateName < 0) {
-            moveDirection = 1;
-            posRotateName = 0;
-          }
-        } else {
-          if (posRotateName > (ROTATE_FILENAME.length() - windowNameLengthFB)) {
-            moveDirection = -1;
-          }
-
-          if (posRotateName < 0) {
-            moveDirection = 1;
-            posRotateName = 0;
+          if (REC && !IRADIO_EN) {
+            // Modo grabacion
+            if (!powerLedFixed) {
+              statusPoweLed = !statusPoweLed;
+              actuatePowerLed(statusPoweLed);
+            } else if (!IRADIO_EN) {
+              actuatePowerLed(1);
+            }
           }
         }
 
-        // Movemos el display de NAME
-        startTime2 = millis();
-      } else if (FILE_LOAD.length() <= windowNameLength &&
-                 (TYPE_FILE_LOAD == "WAV" || TYPE_FILE_LOAD == "MP3" ||
-                  TYPE_FILE_LOAD == "FLAC")) {
-        if (STOP) {
-          hmi.writeString("name.txt=\"" + FILE_LOAD + "\"");
-        } else {
-          if (TYPE_FILE_LOAD == "TAP") {
-            PROGRAM_NAME = myTAP.descriptor[BLOCK_SELECTED].name;
-          } else if (TYPE_FILE_LOAD == "TZX" || TYPE_FILE_LOAD == "CDT" ||
-                     TYPE_FILE_LOAD == "TSX") {
-            PROGRAM_NAME = myTZX.descriptor[BLOCK_SELECTED].name;
-          } else if (TYPE_FILE_LOAD == "PZX") {
-            // PROGRAM_NAME = myPZX.descriptor[BLOCK_SELECTED].name;
-          } else {
-            // Para MP3 y WAV
-            PROGRAM_NAME = FILE_LOAD;
-          }
-          //
-          hmi.writeString("name.txt=\"" + PROGRAM_NAME + "\"");
-        }
-      }
-    }
+        if (millis() - startTime4 > timeRTC) 
+        {
+          // Timer para actualizar hora RTC
+          startTime4 = millis();
+          if (CURRENT_PAGE == 0) 
+          { 
+            //LAST_MESSAGE = rtc.getDateTime(false) + " - Press EJECT or REC.";
+            //LAST_MESSAGE = String(rtc.getDay()) + "/" + String(rtc.getMonth()) + "/" + String(rtc.getYear()) + " - " 
+            //             + String(rtc.getHour()) + ":" + String(rtc.getMinute()) + ":" + String(rtc.getSecond()) + " - Press EJECT or REC.";
 
-#endif
+            LAST_MESSAGE = getFormattedDateTime(rtc.getDay(), rtc.getMonth(), rtc.getYear(),
+                                    rtc.getHour(), rtc.getMinute(), rtc.getSecond()) + " - Press EJECT or REC.";                         
+          }
+        }
+
+        if ((millis() - startTime) > tScrRfsh) {
+          startTime = millis();
+          stackFreeCore1 = uxTaskGetStackHighWaterMark(Task1);
+          stackFreeCore0 = uxTaskGetStackHighWaterMark(Task0);
+          hmi.updateInformationMainPage();
+        }
+
+        if (rotate_enable || ENABLE_ROTATE_FILEBROWSER) {
+          if ((millis() - startTime2) > tRotateNameRfsh &&
+              (FILE_LOAD.length() > windowNameLength ||
+              ((ROTATE_FILENAME.length() > windowNameLengthFB)) *
+                  ENABLE_ROTATE_FILEBROWSER)) {
+            // Capturamos el texto con tamaño de la ventana
+            if ((TYPE_FILE_LOAD == "WAV" || TYPE_FILE_LOAD == "MP3" ||
+                TYPE_FILE_LOAD == "FLAC")) {
+              hmi.writeString("name.txt=\"" +
+                              FILE_LOAD.substring(
+                                  posRotateName, posRotateName + windowNameLength) +
+                              "\"");
+            } else {
+              if (!ENABLE_ROTATE_FILEBROWSER) {
+                PROGRAM_NAME = FILE_LOAD.substring(
+                    posRotateName, posRotateName + windowNameLength);
+              } else {
+                hmi.writeString(
+                    "file.path.txt=\"" +
+                    ROTATE_FILENAME.substring(posRotateName,
+                                              posRotateName + windowNameLengthFB) +
+                    "\"");
+              }
+            }
+            // Lo rotamos segun el sentido que toque
+            posRotateName += moveDirection;
+            // Comprobamos limites para ver si hay que cambiar sentido
+            if (!ENABLE_ROTATE_FILEBROWSER) {
+              if (posRotateName > (FILE_LOAD.length() - windowNameLength)) {
+                moveDirection = -1;
+              }
+
+              if (posRotateName < 0) {
+                moveDirection = 1;
+                posRotateName = 0;
+              }
+            } else {
+              if (posRotateName > (ROTATE_FILENAME.length() - windowNameLengthFB)) {
+                moveDirection = -1;
+              }
+
+              if (posRotateName < 0) {
+                moveDirection = 1;
+                posRotateName = 0;
+              }
+            }
+
+            // Movemos el display de NAME
+            startTime2 = millis();
+          } else if (FILE_LOAD.length() <= windowNameLength &&
+                    (TYPE_FILE_LOAD == "WAV" || TYPE_FILE_LOAD == "MP3" ||
+                      TYPE_FILE_LOAD == "FLAC")) {
+            if (STOP) {
+              hmi.writeString("name.txt=\"" + FILE_LOAD + "\"");
+            } else {
+              if (TYPE_FILE_LOAD == "TAP") {
+                PROGRAM_NAME = myTAP.descriptor[BLOCK_SELECTED].name;
+              } else if (TYPE_FILE_LOAD == "TZX" || TYPE_FILE_LOAD == "CDT" ||
+                        TYPE_FILE_LOAD == "TSX") {
+                PROGRAM_NAME = myTZX.descriptor[BLOCK_SELECTED].name;
+              } else if (TYPE_FILE_LOAD == "PZX") {
+                // PROGRAM_NAME = myPZX.descriptor[BLOCK_SELECTED].name;
+              } else {
+                // Para MP3 y WAV
+                PROGRAM_NAME = FILE_LOAD;
+              }
+              //
+              hmi.writeString("name.txt=\"" + PROGRAM_NAME + "\"");
+            }
+          }
+        }
+
+    #endif
   }
 #endif
 }
@@ -8046,37 +8076,14 @@ void setupWifi() {
     hmi.writeString("menu.wifiEn.val=1");
     delay(125);
 
-// FTP Server
-#ifdef FTP_SERVER_ENABLE
-    ftpSrv.begin(&SD_MMC, "powa", "powa");
-#endif
+    // FTP Server
+    #ifdef FTP_SERVER_ENABLE
+        ftpSrv.begin(&SD_MMC, "powa", "powa");
+    #endif
 
-#ifdef WEB_SERVER_ENABLE
-    server.begin();
-#endif
-
-    hmi.writeString("statusLCD.txt=\"NTP Client running\"");
-    // NTP Client
-    timeclient.begin();
-    timeclient.setTimeOffset(3600);
-    timeclient.forceUpdate();
-    String formattedDate = timeclient.getFormattedDate();
-    logln("NTP client running");
-    logln(formattedDate);
-
-    // Extract date
-    int splitT = formattedDate.indexOf("T");
-    NTPday = formattedDate.substring(0, splitT);
-    log("DATE: ");
-    logln(NTPday);
-    // Extract time
-    NTPtime = formattedDate.substring(splitT + 1, formattedDate.length() - 1);
-    log("HOUR: ");
-    logln(NTPtime);
-
-    //
-    hmi.writeString("statusLCD.txt=\"" + NTPday + " - " + NTPtime + "\"");
-    delay(2000);
+    #ifdef WEB_SERVER_ENABLE
+        server.begin();
+    #endif
 
   } else {
     WIFI_CONNECTED = false;
@@ -8084,9 +8091,81 @@ void setupWifi() {
     hmi.writeString("menu.wifiEn.val=0");
     delay(125);
   }
-  //}
 
   delay(750);
+}
+
+// void setupNTPClient()
+// {
+//     hmi.writeString("statusLCD.txt=\"NTP Client running\"");
+//     // NTP Client
+//     timeclient.begin();
+//     timeclient.setTimeOffset(TIMEZONE * 3600);
+//     timeclient.forceUpdate();
+//     String formattedDate = timeclient.getFormattedDate();
+//     logln("NTP client running");
+//     logln(formattedDate);
+
+//     // Extract date
+//     int splitT = formattedDate.indexOf("T");
+//     String NTPday = formattedDate.substring(0, splitT);
+//     // Extract time
+//     String NTPtime = formattedDate.substring(splitT + 1, formattedDate.length() - 1);
+
+
+//     updateNTP();
+//     setNtpDateTimeFromStrings(NTPday, NTPtime);
+//     time_t tepoch = getNtpEpoch();
+
+//     rtc.setTime(TIMEINFO.tm_sec, TIMEINFO.tm_min, TIMEINFO.tm_hour, TIMEINFO.tm_mday, TIMEINFO.tm_mon + 1, TIMEINFO.tm_year + 1900);
+//     delay(5000);
+//     //rtc.setTimeStruct(TIMEINFO);
+//     hmi.writeString("statusLCD.txt=\"" + NTPday + " - " + NTPtime + "\"");
+//     getLocalTime(&TIMEINFO);
+//     logln("TIMEINFO struct log:");
+//     logln("tm_sec: " + String(TIMEINFO.tm_sec));
+//     logln("tm_min: " + String(TIMEINFO.tm_min));
+//     logln("tm_hour: " + String(TIMEINFO.tm_hour));    
+//     logln("tm_mday: " + String(TIMEINFO.tm_mday));
+//     logln("tm_mon: " + String(TIMEINFO.tm_mon));
+//     logln("tm_year: " + String(TIMEINFO.tm_year));
+//     logln("tm_wday: " + String(TIMEINFO.tm_wday));
+//     logln("tm_yday: " + String(TIMEINFO.tm_yday));
+//     logln("tm_isdst: " + String(TIMEINFO.tm_isdst));
+//     logln("----------");
+//     logln(rtc.getTimeDate(false));    
+//     logln("From RTC:");
+//     logln("Date & Time: " + String(rtc.getDay()) + "/" + String(rtc.getMonth()) + "/" + String(rtc.getYear()) + " " + String(rtc.getHour()) + ":" + String(rtc.getMinute()) + ":" + String(rtc.getSecond()));
+//     delay(1000);
+//     logln("------");
+//     logln("Date & Time: " + String(rtc.getDay()) + "/" + String(rtc.getMonth()) + "/" + String(rtc.getYear()) + " " + String(rtc.getHour()) + ":" + String(rtc.getMinute()) + ":" + String(rtc.getSecond()));
+
+//     //
+    
+// }
+
+void setupNTP()
+{
+  // NTP Client
+  hmi.writeString("statusLCD.txt=\"NTP and RTC settings\"");
+  const char* ntpServer1 = NTPSERVER;
+  const char* ntpServer2 = "pool.ntp.org";
+
+  const long gmtOffset_sec = TIMEZONE * 3600;
+  const int daylightOffset_sec = SUMMERTIME ? 3600 : 0;
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer1, ntpServer2);
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    logln("NTP. Failed to obtain time");
+    hmi.writeString("statusLCD.txt=\"NTP pool failed\"");
+    return;
+  }
+  rtc.setTimeStruct(timeinfo);
+  //rtc.setTime(30, 24, 15, 17, 1, 2021);
+  logln(rtc.getTime("%A, %B %d %Y %H:%M:%S"));
+  hmi.writeString("statusLCD.txt=\"" + rtc.getTime("%A, %B %d %Y %H:%M:%S") + "\"");
+  delay(2000);
+  //struct tm timeinfo = rtc.getTimeStruct();
 }
 
 void prepareCardStructure() {
@@ -8158,6 +8237,21 @@ void prepareCardStructure() {
     hmi.reloadCustomDir("/");
     delay(750);
   }
+}
+
+void dateTimeSD(uint16_t* date, uint16_t* time) {
+    
+
+    struct tm tm;
+    // Aquí pones la fecha/hora deseada
+    tm.tm_year = 2026 - 1900;
+    tm.tm_mon = 1; // Febrero (0-based)
+    tm.tm_mday = 14;
+    tm.tm_hour = 12;
+    tm.tm_min = 34;
+    tm.tm_sec = 56;
+    *date = FS_DATE(tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+    *time = FS_TIME(tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 
 void setupSDCard() {
@@ -8435,6 +8529,16 @@ void setup() {
   // Si hay configuración activamos el wifi
   setupWifi();
 
+  // -------------------------------------------------------------------------
+  //
+  // Configuramos el reloj interno del sistema
+  //
+  // -------------------------------------------------------------------------
+  //updateNTP();
+  //setupNTPClient();
+  setupNTP();
+ 
+  
 // -------------------------------------------------------------------------
 //
 // Confguracion del bluetooth
@@ -8580,7 +8684,6 @@ void setup() {
   // ---------------------------------------------------------------------------
   // Mensaje de bienvenida
   // ---------------------------------------------------------------------------
-  LAST_MESSAGE = "Press EJECT to select a file or REC.";
 
   // ---------------------------------------------------------------------------
   //
@@ -8616,6 +8719,8 @@ void setup() {
 #endif
 
   // fin del setup()
+  LAST_MESSAGE = "Press EJECT to select a file or REC.";
+  CURRENT_PAGE = 0;
 }
 
 void loop() {}

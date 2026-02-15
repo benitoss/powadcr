@@ -2713,6 +2713,7 @@ class HMI
             // Si estamos en el tape pasamos a tape0
             delay(300);
             writeString("page tape0");
+            CURRENT_PAGE = 0;
           }
           delay(500);          
           // Entramos en el file browser
