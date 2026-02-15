@@ -51,6 +51,11 @@ The LCD touch screen display chosen for this project is a TFT HMI LCD Display Mo
 
 NOTE: Several version of this LCD are availables. The project uses T0 versions but is possible to upgrade easily to T1 version.
 
+Important: 
+- Before using, configure the screen to 3.3v by connecting JP2 with a jumper (short wire welded is enough)
+  
+  ![20260215_111140](https://github.com/user-attachments/assets/b07eb60f-c534-4497-a2ea-625520ad8a43)  
+
 About POWADCR Device.
 -----
 Architecture
