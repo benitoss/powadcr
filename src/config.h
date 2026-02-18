@@ -270,6 +270,28 @@ int GPIO_MSX_REMOTE_PAUSE = 19;
 #define RADIO_SYNTONIZATION_LED_COLOR 2016
 
 // --------------------------------------------------------------
+// CLOCK Config
+// --------------------------------------------------------------
+
+// ON
+//60868 - amarillo 
+//2016 - verde 
+//63488 - rojo
+
+// OFF
+//33569 - Amarillo apagado
+//1024 - Verde apagado
+//32768 - Rojo apagado
+
+// Colores del reloj DAY
+#define CLOCK_UPDATE_INTERVAL_MS 1000   // Actualizar cada segundo
+#define CLOCK_BLINK_INTERVAL_MS 500    // Parpadeo cada 500ms
+#define CLOCK_COLOR 2016
+#define CLOCK_DATE_COLOR 2016 
+#define CLOCK_DISABLE_INDICATOR_COLOR 1024
+#define CLOCK_ENABLE_INDICATOR_COLOR 2016
+
+// --------------------------------------------------------------
 // Recording parameters
 // --------------------------------------------------------------
 // Poner 1 --> SI SE ESTÁ USANDO 22200 Hz

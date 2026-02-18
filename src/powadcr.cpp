@@ -1067,6 +1067,8 @@ void WavRecording() {
   SAMPLING_RATE = new_sr.sample_rate;
   new_sr.sample_rate = DEFAULT_WAV_SAMPLING_RATE_REC;
   kitStream.setAudioInfo(new_sr);
+  // Actuamos sobre el amplificador
+  kitStream.setPAPower(ACTIVE_AMP && EN_SPEAKER);  
 
   logln("Starting WAV recording... on file " + wavfilename);
 
@@ -1107,13 +1109,16 @@ void WavRecording() {
   if (WAV_8BIT_MONO) 
   {
     // Configuracion del convertidor
+    // multi.setAudioInfo(info);
+    // multi.begin();
+    //
     nfc.setAudioInfo(info);
     nfc.begin(info);
+    // Configuramos el copier
+    copier.begin(encoder, nfc); // WAV: fuente kitStream, destinos encoder y kitStream
+    copier.setSynchAudioInfo(true);
     // Inicializamos el encoder
     encoder.begin(nfc.audioInfoOut());
-    // Configuramos el copier
-    copier.begin(multi, nfc); // WAV: fuente kitStream, destinos encoder y kitStream
-    copier.setSynchAudioInfo(true);
   } 
   else 
   {
@@ -1121,6 +1126,9 @@ void WavRecording() {
     // ecfg.sample_rate = DEFAULT_WAV_SAMPLING_RATE_REC;
     // ecfg.bits_per_sample = 16;
     // ecfg.channels = 2; // Stereo
+    multi.setAudioInfo(infoStereo);
+    multi.begin();
+    //
     copier.begin(multi, kitStream); // WAV: fuente kitStream, destinos encoder y kitStream
     copier.setSynchAudioInfo(true);
     encoder.begin(infoStereo);
@@ -1128,8 +1136,7 @@ void WavRecording() {
 
   // Iniciamos el encoder con la configuración de señal
   
-  // Actuamos sobre el amplificador
-  kitStream.setPAPower(ACTIVE_AMP && EN_SPEAKER);
+
   // Reset de variables
   STOP = false;
   WAVFILE_PRELOAD = false;
@@ -1190,6 +1197,7 @@ void WavRecording() {
   copier.end();
   encoder.end();
   nfc.end();
+  multi.end();
 
   // Cerramos el fichero WAV
   wavfile.flush();
@@ -2329,7 +2337,7 @@ void RadioPlayer() {
   ENABLE_ROTATE_FILEBROWSER = false;
   REM_ENABLE = false;
   EJECT = false;
-
+  RADIO_IS_PLAYING = true;
   // 1. CONFIGURACIÓN DE TAREAS Y BUFFERS
   SimpleCircularBuffer radioBuffer(RADIO_BUFFER_SIZE);
   URLStream urlStream(ssid.c_str(), password);
@@ -2664,6 +2672,8 @@ void RadioPlayer() {
   dialIndicator(false);
   hmi.writeString("tape.tm0.en=1");
   hmi.writeString("tape.tm1.en=1");
+
+  RADIO_IS_PLAYING = false;
 }
 // ... (resto del código) ...
 
@@ -2678,6 +2688,7 @@ void MediaPlayer() {
   // resetOutputCodec();
 
   MEDIA_PLAYER_EN = true;
+  MUSIC_IS_PLAYING = true;
   EJECT = false;
 
   // Variables
@@ -3906,6 +3917,7 @@ void MediaPlayer() {
 
   // Liberamos la memoria del audiolist
   free(audiolist);
+  MUSIC_IS_PLAYING = false;
 }
 
 // Función helper para cambiar configuración de audio de manera segura
@@ -7767,6 +7779,9 @@ void Task0code(void *pvParameters) {
   uint8_t lastminute = 0;
   uint8_t lastsecond = 0;
   String lastTimeMessage = "";
+  bool lastRadioIsPlaying = false;
+  bool lastMusicIsPlaying = false;
+
   // int tRotateNameRfsh = 200;
   // ✅ AÑADE UN TEMPORIZADOR PARA MEDIR LA PILA
   unsigned long stackCheckTime = millis();
@@ -7844,24 +7859,35 @@ void Task0code(void *pvParameters) {
         if (millis() - startTime4 > timeRTC) 
         {
           // Timer para actualizar hora RTC
-          if (CURRENT_PAGE == 0) 
-          {             
-            LAST_MESSAGE = getFormattedDateTime(rtc.getAmPm(),rtc.getDay(), rtc.getMonth(), rtc.getYear(),
-                                    rtc.getHour(), rtc.getMinute(), rtc.getSecond()) + " - Press EJECT or REC.";
+          // if (CURRENT_PAGE == 0) 
+          // {             
+          //   LAST_MESSAGE = getFormattedDateTime(rtc.getAmPm(),rtc.getDay(), rtc.getMonth(), rtc.getYear(),
+          //                           rtc.getHour(), rtc.getMinute(), rtc.getSecond()) + " - Press EJECT or REC.";
             
-          }
-          else if (CURRENT_PAGE == 99) 
+          //   lasthour = 0;
+          //   lastminute = 0;
+          //   lastsecond = 0;
+          //   lastTimeMessage = "";
+          //   lastRadioIsPlaying = false;
+          //   lastMusicIsPlaying = false;
+          // }
+          // else 
+          
+          if (CURRENT_PAGE == 99) 
           {
+
             char buf[4];
             uint8_t hour = rtc.getHour();
             uint8_t minute = rtc.getMinute();
             uint8_t second = rtc.getSecond();
+            String ampm = rtc.getAmPm(false);
 
-            if (rtc.getAmPm(false)=="PM")
+            // 
+            if (ampm=="PM")
             {
                 hour = hour + 12; // Convertir a formato 12 horas
             }
-            else if (rtc.getAmPm(false)=="AM")
+            else if (ampm=="AM")
             {
                 if (hour == 12) hour = 0; // Ajustar medianoche
             }
@@ -7885,6 +7911,7 @@ void Task0code(void *pvParameters) {
             {
               snprintf(buf, sizeof(buf), "%02u", second);
               myNex.writeStr("clock.timeS.txt", String(buf));
+
               lastsecond = second;
             }
 
@@ -7894,6 +7921,39 @@ void Task0code(void *pvParameters) {
               lastTimeMessage = rtc.getDate(true);
               myNex.writeStr("clock.timeMessage.txt", rtc.getDate(true));
             }
+
+            if (MUSIC_IS_PLAYING != lastMusicIsPlaying)
+            {
+              lastMusicIsPlaying = MUSIC_IS_PLAYING;
+              if (MUSIC_IS_PLAYING)
+              {
+                //Encendido
+                myNex.writeNum("clock.m3.pco", CLOCK_ENABLE_INDICATOR_COLOR);
+                myNex.writeNum("clock.t3.pco", CLOCK_DISABLE_INDICATOR_COLOR);
+              }
+              else
+              {
+                //Apagado
+                myNex.writeNum("clock.m3.pco", CLOCK_DISABLE_INDICATOR_COLOR);
+
+              }
+            }
+
+            if (RADIO_IS_PLAYING != lastRadioIsPlaying)
+            {
+              lastRadioIsPlaying = RADIO_IS_PLAYING;
+              if (RADIO_IS_PLAYING)
+              {
+                //Encendido
+                myNex.writeNum("clock.t3.pco", CLOCK_ENABLE_INDICATOR_COLOR);
+                myNex.writeNum("clock.m3.pco", CLOCK_DISABLE_INDICATOR_COLOR);
+              }
+              else
+              {
+                //Apagado
+                myNex.writeNum("clock.t3.pco", CLOCK_DISABLE_INDICATOR_COLOR);
+              }
+            }            
           }  
           else
           {
@@ -7901,6 +7961,8 @@ void Task0code(void *pvParameters) {
             lastminute = 0;
             lastsecond = 0;
             lastTimeMessage = "";
+            lastRadioIsPlaying = false;
+            lastMusicIsPlaying = false;
           }                              
 
           startTime4 = millis();           
