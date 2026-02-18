@@ -359,11 +359,7 @@ class MultiOutput : public ModifyingOutput {
   }
 
   virtual ~MultiOutput() {
-    for (int j = 0; j < vector.size(); j++) {
-      if (vector[j]->isDeletable()) {
-        delete vector[j];
-      }
-    }
+    clear();
   }
 
   /// Add an additional AudioOutput output
@@ -416,8 +412,19 @@ class MultiOutput : public ModifyingOutput {
     return 1;
   }
 
+  /// Removes all output components
+  void clear() {
+    for (auto &tmp : vector) {
+      if (tmp != nullptr && tmp->isDeletable()) {
+        delete tmp;
+      }
+    }
+    vector.clear();
+  }
+
  protected:
   Vector<AudioOutput *> vector;
+
   /// support for Pipleline
   void setOutput(Print &out) { add(out); }
 };
@@ -446,6 +453,19 @@ class TimedStream : public ModifyingStream {
   TimedStream(AudioOutput &o, long startSeconds = 0, long endSeconds = -1) {
     p_print = &o;
     p_info = &o;
+    setStartSec(startSeconds);
+    setEndSec(endSeconds);
+  }
+  
+  TimedStream(Stream &io, long startSeconds = 0, long endSeconds = -1) {
+    p_stream = &io;
+    p_print = &io;
+    setStartSec(startSeconds);
+    setEndSec(endSeconds);
+  }
+
+  TimedStream(Print &o, long startSeconds = 0, long endSeconds = -1) {
+    p_print = &o;
     setStartSec(startSeconds);
     setEndSec(endSeconds);
   }

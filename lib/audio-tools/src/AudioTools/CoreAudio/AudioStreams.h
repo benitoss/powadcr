@@ -449,9 +449,7 @@ class GeneratedSoundStream : public AudioStream {
   AudioInfo audioInfo() override { return generator_ptr->audioInfo(); }
 
   /// This is unbounded so we just return the buffer size
-  virtual int available() override {
-    return active ? DEFAULT_BUFFER_SIZE * 2 : 0;
-  }
+  virtual int available() override { return active ? buffer_size : 0; }
 
   /// privide the data as byte stream
   size_t readBytes(uint8_t *data, size_t len) override {
@@ -466,9 +464,14 @@ class GeneratedSoundStream : public AudioStream {
 
   void flush() override {}
 
+  /// Redefine the buffer size which is reported in available()
+  void resize(int maxReadSize) { buffer_size = maxReadSize; }
+
  protected:
   bool active = true;  // support for legacy sketches
   SoundGenerator<T> *generator_ptr;
+  int buffer_size =
+      DEFAULT_BUFFER_SIZE * 100;  // there is no reason to limit this
   const char *source_not_defined_error = "Source not defined";
 };
 
@@ -575,15 +578,15 @@ class BufferedStream : public ModifyingStream {
     }
   }
 
-  /// Provides data w/o consuming 
+  /// Provides data w/o consuming
   size_t peekBytes(uint8_t *data, size_t len) {
     if (buffer.isEmpty()) {
       refill();
-    } 
+    }
     return buffer.peekArray(data, len);
   }
 
-  /// Returns the available bytes 
+  /// Returns the available bytes
   int available() override {
     if (p_in == nullptr) return 0;
     return buffer.available() + p_in->available();
@@ -595,10 +598,9 @@ class BufferedStream : public ModifyingStream {
   /// Resize the buffer
   void resize(int size) { buffer.resize(size); }
 
-  /// Defines the minimum direct unbuffered read size to the original source (default is 1024)
-  void setMinUnbufferedReadSize(size_t size) {
-    minReadBufferSize = size;
-  }
+  /// Defines the minimum direct unbuffered read size to the original source
+  /// (default is 1024)
+  void setMinUnbufferedReadSize(size_t size) { minReadBufferSize = size; }
 
  protected:
   SingleBuffer<uint8_t> buffer{0};
@@ -643,7 +645,7 @@ class BufferedStream : public ModifyingStream {
  * @param out
  * @param converter
  */
-template <typename T>
+template <typename T = int16_t>
 class ConverterStream : public ModifyingStream {
  public:
   ConverterStream() = default;
@@ -1254,7 +1256,7 @@ class InputMixer : public AudioStream {
   void setRetryCount(int retry) { retry_count = retry; }
 
   /// Removes a stream by index position
-  bool remove(int idx){
+  bool remove(int idx) {
     if (idx < 0 || idx >= size()) {
       return false;
     }
@@ -1309,11 +1311,11 @@ class InputMixer : public AudioStream {
 
   /// Recalculate the weights
   void recalculateWeights() {
-      int total = 0;
-      for (int j = 0; j < weights.size(); j++) {
-        total += weights[j];
-      }
-      total_weights = total;
+    int total = 0;
+    for (int j = 0; j < weights.size(); j++) {
+      total += weights[j];
+    }
+    total_weights = total;
   }
 
   /// mixing using a vector of samples
@@ -1635,7 +1637,7 @@ class CallbackStream : public ModifyingStream {
  * @author Phil Schatzmann
  * @copyright GPLv3
  */
-template <typename T, class TF>
+template <typename T = int16_t, class TF = float>
 class FilteredStream : public ModifyingStream {
  public:
   FilteredStream() = default;
@@ -1738,6 +1740,9 @@ class FilteredStream : public ModifyingStream {
   ConverterNChannels<T, TF> *p_converter = nullptr;
 };
 
+/// Callback function type for activity state changes
+using ActivityCallback = void (*)(bool isActive);
+
 /**
  * @brief A simple class to determine the volume. You can use it as
  * final output or as output or input in your audio chain.
@@ -1746,17 +1751,12 @@ class FilteredStream : public ModifyingStream {
  * @author Phil Schatzmann
  * @copyright GPLv3
  */
+
 class VolumeMeter : public ModifyingStream {
  public:
   VolumeMeter() = default;
-  VolumeMeter(AudioStream &as) {
-    addNotifyAudioChange(as);
-    setStream(as);
-  }
-  VolumeMeter(AudioOutput &ao) {
-    addNotifyAudioChange(ao);
-    setOutput(ao);
-  }
+  VolumeMeter(AudioStream &as) { setStream(as); }
+  VolumeMeter(AudioOutput &ao) { setOutput(ao); }
   VolumeMeter(Print &print) { setOutput(print); }
   VolumeMeter(Stream &stream) { setStream(stream); }
 
@@ -1871,6 +1871,31 @@ class VolumeMeter : public ModifyingStream {
     }
   }
 
+  /// Set activity monitoring callback and configure threshold
+  /// @param callback Function to call when activity state changes (nullptr to disable)
+  /// @param threshold Volume threshold (0.0 to 1.0) - activity detected when volume exceeds this
+  /// @param duration_ms Time in milliseconds volume must be below threshold to be considered inactive
+  void setActivityCallback(ActivityCallback callback, float threshold = 0.2, unsigned long duration_ms = 2000) {
+    activity_callback = callback;
+    activity_threshold = threshold;
+    activity_duration_ms = duration_ms;
+    activity_monitoring_enabled = (callback != nullptr);
+  }
+
+  /// Get current activity state
+  /// @return true if active (volume above threshold), false if inactive
+  bool isActive() const {
+    return is_active;
+  }
+
+  void setOutput(AudioOutput &out) {
+    addNotifyAudioChange(out);
+    setOutput((Print &)out);
+  }
+  void setStream(AudioStream &io) {
+    addNotifyAudioChange(io);
+    setStream((Stream &)io);
+  }
   void setOutput(Print &out) override { p_out = &out; }
   void setStream(Stream &io) override {
     p_out = &io;
@@ -1887,6 +1912,14 @@ class VolumeMeter : public ModifyingStream {
   Print *p_out = nullptr;
   Stream *p_stream = nullptr;
   size_t sample_count_per_channel = 0;
+  
+  // Activity monitoring
+  ActivityCallback activity_callback = nullptr;
+  float activity_threshold = 0.0f;
+  unsigned long activity_duration_ms = 0;
+  bool activity_monitoring_enabled = false;
+  bool is_active = false;
+  unsigned long inactive_start_time = 0;
 
   void updateVolumes(const uint8_t *data, size_t len) {
     if (data == nullptr || len == 0) return;
@@ -1941,6 +1974,38 @@ class VolumeMeter : public ModifyingStream {
       volumes[j] = volumes_tmp[j];
       sum[j] = sum_tmp[j];
     }
+    updateActivityState();
+  }
+
+  void updateActivityState() {
+    if (!activity_monitoring_enabled || activity_callback == nullptr) return;
+
+    float current_volume_ratio = volumeRatio();
+    bool above_threshold = current_volume_ratio > activity_threshold;
+    unsigned long current_time = millis();
+
+    if (above_threshold) {
+      // Volume is above threshold - should be active
+      if (!is_active) {
+        is_active = true;
+        activity_callback(true);
+      }
+      inactive_start_time = 0; // Reset inactive timer
+    } else {
+      // Volume is below threshold
+      if (is_active) {
+        // Currently active, check if we should transition to inactive
+        if (inactive_start_time == 0) {
+          // Start timing the inactive period
+          inactive_start_time = current_time;
+        } else if (current_time - inactive_start_time >= activity_duration_ms) {
+          // Been below threshold long enough
+          is_active = false;
+          activity_callback(false);
+          inactive_start_time = 0;
+        }
+      }
+    }
   }
 };
 
@@ -1949,9 +2014,177 @@ class VolumeMeter : public ModifyingStream {
 /// @ingroup io
 using VolumePrint = VolumeMeter;
 
-/// @brief Legacy alias for VolumeMeter  
+/// @brief Legacy alias for VolumeMeter
 /// @ingroup io
 using VolumeOutput = VolumeMeter;
+
+/**
+ * @brief Monitors audio input and reports if the volume exceeds a specified
+ * limit within a given period.
+ *
+ * This class uses a VolumeMeter internally and tracks if the input volume has
+ * exceeded the specified limit during the last period. It can be used in an
+ * audio processing chain as a ModifyingStream.
+ * @ingroup io
+ * @ingroup volume
+ * @author Phil Schatzmann
+ * @copyright GPLv3
+ */
+class AudioInputMonitor : public ModifyingStream {
+ public:
+  /**
+   * @brief Construct a new AudioInputMonitor with a volume limit in percent
+   * @param limitPercent The volume threshold as percent (default: 20)
+   */
+  AudioInputMonitor(uint8_t limitPercent = 20) {
+    setLimitPercent(limitPercent);
+    volume_meter.addNotifyAudioChange(*this);
+  }
+  /**
+   * @brief Construct a new AudioInputMonitor with an input stream
+   * @param as Reference to an AudioStream
+   * @param limitPercent The volume threshold as percent (default: 20)
+   */
+  AudioInputMonitor(AudioStream &as, uint8_t limitPercent = 20)
+      : AudioInputMonitor(limitPercent) {
+    setStream(as);
+  }
+  /**
+   * @brief Construct a new AudioInputMonitor with an output
+   * @param ao Reference to an AudioOutput
+   * @param limitPercent The volume threshold as percent (default: 20)
+   */
+  AudioInputMonitor(AudioOutput &ao, uint8_t limitPercent = 20)
+      : AudioInputMonitor(limitPercent) {
+    setOutput(ao);
+  }
+  /**
+   * @brief Construct a new AudioInputMonitor with a Print output
+   * @param print Reference to a Print object
+   * @param limitPercent The volume threshold as percent (default: 20)
+   */
+  AudioInputMonitor(Print &print, uint8_t limitPercent = 20)
+      : AudioInputMonitor(limitPercent) {
+    setOutput(print);
+  }
+  /**
+   * @brief Construct a new AudioInputMonitor with a Stream input
+   * @param stream Reference to a Stream object
+   * @param limitPercent The volume threshold as percent (default: 20)
+   */
+  AudioInputMonitor(Stream &stream, uint8_t limitPercent = 20)
+      : AudioInputMonitor(limitPercent) {
+    setStream(stream);
+  }
+  /**
+   * @brief Set the volume threshold as percent
+   * @param percent The new volume threshold (0-100)
+   */
+  void setLimitPercent(uint8_t percent) { limit_percent = percent; }
+
+  /**
+   * @brief Get the current volume threshold as percent
+   * @return The current volume threshold (0-100)
+   */
+  uint8_t limitPercent() const { return limit_percent; }
+
+  /**
+   * @brief Begin processing with the given audio information
+   * @param info AudioInfo structure
+   * @return true if successful
+   */
+  bool begin(AudioInfo info) {
+    setAudioInfo(info);
+    return begin();
+  }
+
+  /**
+   * @brief Begin processing with the current audio information
+   * @return true if successful
+   */
+  bool begin() override {
+    volume_meter.begin(audioInfo());
+    return true;
+  }
+
+  /**
+   * @brief Set the audio information
+   * @param info AudioInfo structure
+   */
+  void setAudioInfo(AudioInfo info) override {
+    ModifyingStream::setAudioInfo(info);
+    volume_meter.setAudioInfo(info);
+  }
+
+  /**
+   * @brief Write audio data to the monitor (same as VolumeMeter)
+   * @param data Pointer to audio data
+   * @param len Number of bytes
+   * @return Number of bytes written
+   */
+  size_t write(const uint8_t *data, size_t len) override {
+    size_t result = volume_meter.write(data, len);
+    if (result > 0 && volume_meter.volumePercent() > limit_percent) {
+      time_over_last_volume_limit = millis();
+    }
+    return result;
+  }
+
+  /**
+   * @brief Read audio data from the monitor (same as VolumeMeter)
+   * @param data Pointer to buffer to fill
+   * @param len Number of bytes to read
+   * @return Number of bytes read
+   */
+  size_t readBytes(uint8_t *data, size_t len) override {
+    size_t result = volume_meter.readBytes(data, len);
+    if (result > 0 && volume_meter.volumePercent() > limit_percent) {
+      time_over_last_volume_limit = millis();
+    }
+    return result;
+  }
+
+  /**
+   * @brief Set the output target
+   * @param out Reference to a Print object
+   */
+  void setOutput(Print &out) override { volume_meter.setOutput(out); }
+  /**
+   * @brief Set the output target
+   * @param out Reference to a Print object
+   */
+  void setOutput(AudioOutput &out) { volume_meter.setOutput(out); }
+  /**
+   * @brief Set the input stream
+   * @param io Reference to a Stream object
+   */
+  void setStream(Stream &io) override { volume_meter.setStream(io); }
+  /**
+   * @brief Set the input stream
+   * @param io Reference to a Stream object
+   */
+  void setStream(AudioStream &io) { volume_meter.setStream(io); }
+
+  /**
+   * @brief Access the underlying VolumeMeter
+   * @return Reference to the internal VolumeMeter
+   */
+  VolumeMeter &getVolumeMeter() { return volume_meter; }
+
+  /**
+   * @brief Returns true if the volume exceeded the limit during the last period
+   * @param time_ms The period in milliseconds to check (default: 1000)
+   * @return true if the volume exceeded the limit during the period
+   */
+  bool isActive(uint16_t time_ms = 1000) {
+    return (millis() - time_over_last_volume_limit) < time_ms;
+  }
+
+protected:
+  VolumeMeter volume_meter; ///< Volume calculation
+  uint8_t limit_percent = 20; ///< Threshold percent
+  uint64_t time_over_last_volume_limit = 0; ///< Last over-limit time (ms)
+};
 
 #ifdef USE_TIMER
 /**

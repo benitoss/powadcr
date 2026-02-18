@@ -96,7 +96,7 @@ EasyNex myNex(SerialHW);
 #include "AudioTools/AudioCodecs/CodecMP3Helix.h"
 #include "AudioTools/AudioCodecs/CodecWAV.h"
 #include "AudioTools/Communication/AudioHttp.h"
-#include "AudioTools/CoreAudio/AudioFilter/Equalizer.h"
+#include "AudioTools/CoreAudio/AudioFilter/Equalizer3Bands.h"
 #include "AudioTools/Disk/AudioSourceIdxSDMMC.h"
 #include "AudioTools/Disk/AudioSourceURL.h"
 // #include "AudioTools/CoreAudio/AudioLoggerSTD.h"
@@ -815,6 +815,7 @@ void sendStatus(int action, int value = 0) {
     // hmi.writeString("mainmenu.verFirmware.txt=\" powadcr " + String(VERSION)
     // + "\"");
     hmi.writeString("page tape0");
+    CURRENT_PAGE = 0;
     break;
 
   case RESET:
@@ -1008,6 +1009,45 @@ void recAnimationFIXED_OFF() {
   powerLedFixed = false;
 }
 
+void wavrec()
+{
+    AudioBoardStream kitStream(AudioKitEs8388V1);
+    AudioInfo info(DEFAULT_WAV_SAMPLING_RATE_REC, 1, 16);
+
+    //AudioBoardStream kitStream()
+
+    auto ncfg = kitStream.defaultConfig(RXTX_MODE);
+    // Guardamos la configuracion de sampling rate
+    SAMPLING_RATE = ncfg.sample_rate;
+    ncfg.sample_rate = DEFAULT_WAV_SAMPLING_RATE_REC;
+    ncfg.input_device = ADC_INPUT_LINE2;
+    ncfg.output_device = DAC_OUTPUT_ALL;
+    kitStream.setAudioInfo(ncfg);
+    
+    File wavfile = SD_MMC.open("/test.wav", FILE_WRITE);
+    
+    NumberFormatConverterStreamT<int16_t, uint8_t> converter(kitStream);
+    EncodedAudioStream encoder(&wavfile, new WAVEncoder()); // Encoder WAV PCM
+
+    StreamCopy copier(encoder,converter);
+    copier.setSynchAudioInfo(true);
+
+    converter.setAudioInfo(info);
+    converter.begin();
+    // Inicializamos el encoder
+    encoder.begin(converter.audioInfoOut());
+    copier.begin(converter, encoder);
+
+    while (!STOP)
+    {
+        copier.copy();
+    }
+
+    copier.end();
+    converter.end();
+    encoder.end();
+}
+
 void WavRecording() {
   //-----------------------------------------------------------
   //
@@ -1044,17 +1084,14 @@ void WavRecording() {
   //  NumberFormatConverterStream nfc(kitStream); // true para signed->unsigned
   AudioInfo info(DEFAULT_WAV_SAMPLING_RATE_REC, 1, 16);
   AudioInfo infoStereo(DEFAULT_WAV_SAMPLING_RATE_REC, 2, 16);
-  HexDumpOutput out(Serial);
-  NumberFormatConverterStreamT<int16_t, uint8_t> nfc((int16_t)kitStream);
+  NumberFormatConverterStreamT<int16_t, uint8_t> nfc(kitStream);
 
     // --- MultiOutput y copier para WAV ---
   MultiOutput multi;
   multi.add(encoder);
   multi.add(kitStream);
-  multi.add(out);
 
-  StreamCopy copier(multi,kitStream);
-  copier.setSynchAudioInfo(true);
+  StreamCopy copier;
   // tzxCopier.setSynchAudioInfo(true);
 
   // Esperamos a que la pantalla esté lista
@@ -1069,21 +1106,14 @@ void WavRecording() {
   
   if (WAV_8BIT_MONO) 
   {
-    // Entrada del convertidor
-    nfc.setStream(kitStream);
-    // Salida del convertidor
-    nfc.setOutput(out);
     // Configuracion del convertidor
     nfc.setAudioInfo(info);
-    // Inicializamos
-    nfc.begin();
+    nfc.begin(info);
     // Inicializamos el encoder
     encoder.begin(nfc.audioInfoOut());
     // Configuramos el copier
     copier.begin(multi, nfc); // WAV: fuente kitStream, destinos encoder y kitStream
-    // Inicializamos el HEXdump
-    out.begin();
-
+    copier.setSynchAudioInfo(true);
   } 
   else 
   {
@@ -1092,6 +1122,7 @@ void WavRecording() {
     // ecfg.bits_per_sample = 16;
     // ecfg.channels = 2; // Stereo
     copier.begin(multi, kitStream); // WAV: fuente kitStream, destinos encoder y kitStream
+    copier.setSynchAudioInfo(true);
     encoder.begin(infoStereo);
   }
 
@@ -1158,7 +1189,6 @@ void WavRecording() {
 
   copier.end();
   encoder.end();
-  out.end();
   nfc.end();
 
   // Cerramos el fichero WAV
@@ -7731,7 +7761,12 @@ void Task0code(void *pvParameters) {
   int mi = 0;
   int se = 0;
   int tScrRfsh = 125;
-  int timeRTC = 2000;
+  int timeRTC = 1000;
+
+  uint8_t lasthour = 0;
+  uint8_t lastminute = 0;
+  uint8_t lastsecond = 0;
+  String lastTimeMessage = "";
   // int tRotateNameRfsh = 200;
   // ✅ AÑADE UN TEMPORIZADOR PARA MEDIR LA PILA
   unsigned long stackCheckTime = millis();
@@ -7805,20 +7840,72 @@ void Task0code(void *pvParameters) {
           }
         }
 
+
         if (millis() - startTime4 > timeRTC) 
         {
           // Timer para actualizar hora RTC
-          startTime4 = millis();
           if (CURRENT_PAGE == 0) 
-          { 
-            //LAST_MESSAGE = rtc.getDateTime(false) + " - Press EJECT or REC.";
-            //LAST_MESSAGE = String(rtc.getDay()) + "/" + String(rtc.getMonth()) + "/" + String(rtc.getYear()) + " - " 
-            //             + String(rtc.getHour()) + ":" + String(rtc.getMinute()) + ":" + String(rtc.getSecond()) + " - Press EJECT or REC.";
-
-            LAST_MESSAGE = getFormattedDateTime(rtc.getDay(), rtc.getMonth(), rtc.getYear(),
-                                    rtc.getHour(), rtc.getMinute(), rtc.getSecond()) + " - Press EJECT or REC.";                         
+          {             
+            LAST_MESSAGE = getFormattedDateTime(rtc.getAmPm(),rtc.getDay(), rtc.getMonth(), rtc.getYear(),
+                                    rtc.getHour(), rtc.getMinute(), rtc.getSecond()) + " - Press EJECT or REC.";
+            
           }
+          else if (CURRENT_PAGE == 99) 
+          {
+            char buf[4];
+            uint8_t hour = rtc.getHour();
+            uint8_t minute = rtc.getMinute();
+            uint8_t second = rtc.getSecond();
+
+            if (rtc.getAmPm(false)=="PM")
+            {
+                hour = hour + 12; // Convertir a formato 12 horas
+            }
+            else if (rtc.getAmPm(false)=="AM")
+            {
+                if (hour == 12) hour = 0; // Ajustar medianoche
+            }
+
+            // Pintamos en el HMI el reloj
+            if (hour != lasthour)
+            {
+              snprintf(buf, sizeof(buf), "%02u", hour);
+              myNex.writeStr("clock.timeH.txt", String(buf));
+              lasthour = hour;
+            }
+
+            if (minute != lastminute)
+            {
+              snprintf(buf, sizeof(buf), "%02u", minute);
+              myNex.writeStr("clock.timeM.txt", String(buf));
+              lastminute = minute;
+            }
+
+            if (second != lastsecond)
+            {
+              snprintf(buf, sizeof(buf), "%02u", second);
+              myNex.writeStr("clock.timeS.txt", String(buf));
+              lastsecond = second;
+            }
+
+            // Fecha
+            if (lastTimeMessage != rtc.getDate(true))
+            {
+              lastTimeMessage = rtc.getDate(true);
+              myNex.writeStr("clock.timeMessage.txt", rtc.getDate(true));
+            }
+          }  
+          else
+          {
+            lasthour = 0;
+            lastminute = 0;
+            lastsecond = 0;
+            lastTimeMessage = "";
+          }                              
+
+          startTime4 = millis();           
         }
+        
 
         if ((millis() - startTime) > tScrRfsh) {
           startTime = millis();

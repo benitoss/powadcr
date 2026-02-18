@@ -485,7 +485,7 @@ class GoertzelStream : public AudioStream {
 
   size_t sample_no = 0;  ///< Sample counter for channel selection
 
-  /***
+  /**
    * @brief Check if a detector has detected its frequency and invoke callback
    */
   void checkDetection(GoertzelDetector& detector) {
@@ -516,7 +516,7 @@ class GoertzelStream : public AudioStream {
    * @param data_len Length of data buffer in bytes
    * @param channels Number of audio channels (for sample distribution)
    */
-  template <typename T>
+  template <typename T = int16_t>
   void processSamplesOfType(const uint8_t* data, size_t data_len,
                             int channels) {
     const T* samples = reinterpret_cast<const T*>(data);

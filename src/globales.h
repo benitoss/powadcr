@@ -457,7 +457,7 @@ bool FILE_IS_OPEN = false;
 // Schmitt trigger
 int SCHMITT_THR = 10; // Porcentage
 int SCHMITT_AMP = 50; // Porcentage
-float IN_REC_VOL = 0.5;
+float IN_REC_VOL = 0.9;
 
 int LAST_SCHMITT_THR = 0;
 bool EN_SCHMITT_CHANGE = false;
@@ -1305,8 +1305,27 @@ void remDetection() {
 // Descompone NTPdate ("YYYY-MM-DD") y NTPtime ("HH:MM:SS") y actualiza las variables globales
 
 // Devuelve un String con la fecha y hora en formato 00/00/0000 - 00:00:00
-inline String getFormattedDateTime(uint8_t day, uint8_t month, uint16_t year, uint8_t hour, uint8_t minute, uint8_t second) {
-    char buf[25];
-    snprintf(buf, sizeof(buf), "%02u / %02u / %04u - %02u:%02u:%02u", day, month, year, hour, minute, second);
+inline String getFormattedDateTime(String amPm, uint8_t day, uint8_t month, uint16_t year, uint8_t hour, uint8_t minute, uint8_t second) {
+    char buf[30];
+    
+    //
+    if (amPm=="PM")
+    {
+        hour = hour + 12; // Convertir a formato 12 horas
+    }
+    else if (amPm=="AM")
+    {
+        if (hour == 12) hour = 0; // Ajustar medianoche
+    }
+
+    if (day==0 || month==0 || year==0)
+    {
+        // Si no se han proporcionado fecha, usar la actual
+        snprintf(buf, sizeof(buf), "%02u:%02u:%02u", hour, minute, second);
+    }
+    else
+    {
+        snprintf(buf, sizeof(buf), "%02u/%02u/%04u - %02u:%02u:%02u", day, month, year, hour, minute, second);
+    }
     return String(buf);
 }

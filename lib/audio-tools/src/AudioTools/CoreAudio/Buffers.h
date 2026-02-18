@@ -18,7 +18,7 @@ namespace audio_tools {
  * @author Phil Schatzmann
  * @copyright GPLv3
  */
-template <typename T>
+template <typename T = int16_t>
 class BaseBuffer {
  public:
   BaseBuffer() = default;
@@ -120,10 +120,10 @@ class BaseBuffer {
   }
 };
 
-/***
+/**
  * @brief A FrameBuffer reads multiple values for array of 2 dimensional frames
  */
-template <typename T>
+template <typename T = int16_t>
 class FrameBuffer {
  public:
   FrameBuffer(BaseBuffer<T> &buffer) { p_buffer = &buffer; }
@@ -168,7 +168,7 @@ class FrameBuffer {
  * @copyright GPLv3
  */
 
-template <typename T>
+template <typename T = int16_t>
 class SingleBuffer : public BaseBuffer<T> {
  public:
   /**
@@ -176,7 +176,8 @@ class SingleBuffer : public BaseBuffer<T> {
    *
    * @param size in entries
    */
-  SingleBuffer(int size) {
+  SingleBuffer(int size, Allocator &allocator = DefaultAllocator)
+      : _allocator(allocator) {
     buffer.resize(size);
     reset();
   }
@@ -323,11 +324,12 @@ class SingleBuffer : public BaseBuffer<T> {
   uint64_t timestamp = 0;
 
  protected:
+  Allocator _allocator; 
   int current_read_pos = 0;
   int current_write_pos = 0;
   bool owns_buffer = true;
   bool is_clear_with_zero = false;
-  Vector<T> buffer{0};
+  Vector<T> buffer{0, _allocator};
 };
 
 /**
@@ -335,10 +337,10 @@ class SingleBuffer : public BaseBuffer<T> {
  * @ingroup buffers
  * @tparam T
  */
-template <typename T>
+template <typename T = int16_t>
 class RingBuffer : public BaseBuffer<T> {
  public:
-  RingBuffer(int size) {
+  RingBuffer(int size, Allocator &allocator = DefaultAllocator) : _allocator(allocator) {
     resize(size);
     reset();
   }
@@ -426,7 +428,8 @@ class RingBuffer : public BaseBuffer<T> {
   virtual size_t size() override { return max_size; }
 
  protected:
-  Vector<T> _aucBuffer;
+  Allocator &_allocator;
+  Vector<T> _aucBuffer{_allocator};
   int _iHead;
   int _iTail;
   int _numElems;
@@ -656,7 +659,7 @@ class RingBufferFile : public BaseBuffer<T> {
  * @author Phil Schatzmann
  * @copyright GPLv3
  */
-template <typename T>
+template <typename T = int16_t>
 class NBuffer : public BaseBuffer<T> {
  public:
   NBuffer(int size, int count) { resize(size, count); }
@@ -872,7 +875,7 @@ class NBuffer : public BaseBuffer<T> {
  * @ingroup buffers
  * @tparam T: buffered data type
  */
-template <typename T>
+template <typename T = int16_t>
 class NBufferExt : public NBuffer<T> {
  public:
   NBufferExt(int size, int count) { resize(size, count); }
@@ -917,7 +920,7 @@ class NBufferExt : public NBuffer<T> {
   using NBuffer<T>::buffer_size;
 };
 
-/***
+/**
  * @brief A File backed buffer which uses the provided files for buffering with
  * the indicated max size. A file is made available for reading as soon as it
  * reached the size limit. You must provide the files opened in "Write" mode
@@ -1080,7 +1083,7 @@ class NBufferFile : public BaseBuffer<T> {
  * @copyright GPLv3
  */
 
-template <typename T>
+template <typename T = int16_t>
 class BufferedArray {
  public:
   BufferedArray(Stream &input, int len) {

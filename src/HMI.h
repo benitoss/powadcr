@@ -2594,14 +2594,24 @@ class HMI
 
           // if(!WF_UPLOAD_TO_SD)
           // {
-          PLAY = true;
-          PAUSE = false;
-          STOP = false;
-          REC = false;
-          EJECT = false;
-          ABORT = false;
+          if (PLAY || CURRENT_PAGE == 0)
+          {
+            // Lanzamos el reloj
+            writeString("page clock");
+            CURRENT_PAGE = 99;
+          }
+          else
+          {
+            PLAY = true;
+            PAUSE = false;
+            STOP = false;
+            REC = false;
+            EJECT = false;
+            ABORT = false;
 
-          BTN_PLAY_PRESSED = true;  
+            BTN_PLAY_PRESSED = true;  
+            writeString("BBOK.val=1");
+          }
           // }
           // else
           // {
@@ -2612,7 +2622,7 @@ class HMI
           //
           // Solo esta de prueba. ELIMINAR!!!!
           //
-          writeString("BBOK.val=1");
+          
           //
           // *********************************************************************
 
@@ -3832,6 +3842,17 @@ class HMI
             TAPE_PAGE_SHOWN = true;
             RADIO_PAGE_SHOWN = true;
         }
+        else if (strCmd.indexOf("0TAPE") != -1)
+        {
+            // Estamos en la pantalla TAPE
+            #ifdef DEBUGMODE
+              logAlert("PAGE TAPE0");
+            #endif
+            CURRENT_PAGE = 0;
+            //updateInformationMainPage(true);
+            TAPE_PAGE_SHOWN = false;
+            RADIO_PAGE_SHOWN = false;
+        }        
         else if (strCmd.indexOf("CHKUPD") != -1)
         {
           //-------------------------------------------------------------------------
