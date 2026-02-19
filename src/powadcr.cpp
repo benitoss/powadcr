@@ -1073,28 +1073,19 @@ void WavRecording() {
   logln("Starting WAV recording... on file " + wavfilename);
 
 
-  EncodedAudioStream encoder(&wavfile, new WAVEncoder()); // Encoder WAV PCM
-
-  // El conversor tiene que actuar sobre la fuente (audio en RAW), si actua
-  // sobre el WAV decoder destroza literalmente la cabecera WAV, ya que el
-  // decoder añade información sobre esta en este caso la fuente de entrada es
-  // kitStream configurada como TX / RX
-  //
-  // Conversor eficiente de 16b a 8b para alimentar el TZXDirectRecordingStream
-
-  //NumberFormatConverterStreamT<int16_t, uint8_t> nfc(kitStream);
-  //  NumberFormatConverterStream nfc(kitStream); // true para signed->unsigned
   AudioInfo info(DEFAULT_WAV_SAMPLING_RATE_REC, 1, 16);
   AudioInfo infoStereo(DEFAULT_WAV_SAMPLING_RATE_REC, 2, 16);
+  // Stream de audio del WAV
+  EncodedAudioStream encoder(&wavfile, new WAVEncoder()); // Encoder WAV PCM
+  // Convertidor 16 a 8 bits
   NumberFormatConverterStreamT<int16_t, uint8_t> nfc(kitStream);
 
-    // --- MultiOutput y copier para WAV ---
+  // --- MultiOutput y copier para WAV ---
   MultiOutput multi;
   multi.add(encoder);
   multi.add(kitStream);
 
   StreamCopy copier;
-  // tzxCopier.setSynchAudioInfo(true);
 
   // Esperamos a que la pantalla esté lista
   LAST_MESSAGE = "Recording to WAV - Press STOP to finish.";
@@ -1104,33 +1095,33 @@ void WavRecording() {
   tapeAnimationON();
 
   // Agregamos las salidas al multiple
-  auto ecfg = encoder.defaultConfig();
   
   if (WAV_8BIT_MONO) 
   {
+    // Configuramos el convertidor para 8-bit mono, con la misma frecuencia de muestreo que el encoder
+    
     // Configuracion del convertidor
-    // multi.setAudioInfo(info);
-    // multi.begin();
-    //
     nfc.setAudioInfo(info);
     nfc.begin(info);
+
+    // Inicializamos el multiple output con la configuración de señal del convertidor
+    //multi.setAudioInfo(info);
+    multi.begin(nfc.audioInfo());
     // Configuramos el copier
-    copier.begin(encoder, nfc); // WAV: fuente kitStream, destinos encoder y kitStream
+    copier.begin(multi, nfc); // WAV: fuente kitStream, destinos encoder y kitStream
     copier.setSynchAudioInfo(true);
-    // Inicializamos el encoder
+    // IMPORTATNTE: Inicializamos el encoder y kitStream con la configuración de señal del convertidor
     encoder.begin(nfc.audioInfoOut());
   } 
   else 
   {
-    // Configuramos el encoder para 44KHz, 16-bit stereo
-    // ecfg.sample_rate = DEFAULT_WAV_SAMPLING_RATE_REC;
-    // ecfg.bits_per_sample = 16;
-    // ecfg.channels = 2; // Stereo
+    // Configuramos el encoder para 44KHz, 16-bit stereo, 2 canales
     multi.setAudioInfo(infoStereo);
     multi.begin();
-    //
+    // Configuramos el copier
     copier.begin(multi, kitStream); // WAV: fuente kitStream, destinos encoder y kitStream
     copier.setSynchAudioInfo(true);
+    // Inicializamos el encoder
     encoder.begin(infoStereo);
   }
 
@@ -1143,7 +1134,7 @@ void WavRecording() {
   BTNREC_PRESSED = false;
 
   // Indicamos
-  hmi.writeString("tape.lblFreq.txt=\"" + String(int(ecfg.sample_rate / 1000)) +
+  hmi.writeString("tape.lblFreq.txt=\"" + String(int(kitStream.audioInfo().sample_rate / 1000)) +
                   "KHz\"");
   
   uint32_t samplesWritten = 0;
