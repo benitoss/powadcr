@@ -793,7 +793,7 @@ bool CONVERT_TO_TZXDR = true;
 
 //
 const char* NTPSERVER = "pool.ntp.org";
-uint8_t TIMEZONE = 1; // GMT+1
+int8_t TIMEZONE = 1; // GMT+1 (the variable is signed, can be negative)
 bool SUMMERTIME = true;
 
 uint8_t NTPhour = 0;
