@@ -19,7 +19,7 @@ namespace audio_tools {
  * In this chase you can check if setting the protocol to "HTTP/1.0" improves
  * the situation.
  * @author Phil Schatzmann
- * @ingroup network
+ * @ingroup http
  * @copyright GPLv3
  *
  */
@@ -153,11 +153,6 @@ class URLStream : public AbstractURLStream {
     fillBuffer();
     total_read++;
     return isEOS() ? -1 : read_buffer[read_pos++];
-  }
-
-  // ✅ MÉTODO NUEVO: Comprueba si la respuesta del servidor utiliza "Transfer-Encoding: chunked".
-  bool isChunked() {
-      return request.isChunked();
   }
 
   virtual int peek() override {
